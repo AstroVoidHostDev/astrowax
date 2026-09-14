@@ -4,7 +4,6 @@
 # Made by Itzytansh
 # =========================================================
 
-# Ensure bash
 if [ -z "$BASH_VERSION" ]; then
     if command -v bash > /dev/null 2>&1; then
         exec bash "$0" "$@"
@@ -12,7 +11,7 @@ if [ -z "$BASH_VERSION" ]; then
 fi
 
 # ═══════════════════════════════════════════════════════════
-# COLORS — Purple / White Theme
+# COLORS
 # ═══════════════════════════════════════════════════════════
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -29,16 +28,16 @@ DIM='\033[2m'
 NC='\033[0m'
 
 # ═══════════════════════════════════════════════════════════
-# CONFIG — Hidden GitHub + Paths
+# CONFIG
 # ═══════════════════════════════════════════════════════════
 GH_USER="${ASTROWAX_GH_USER:-AstroVoidHostDev}"
 GH_REPO="${ASTROWAX_GH_REPO:-astrowax}"
 GH_BRANCH="${ASTROWAX_GH_BRANCH:-main}"
 GH_ARCHIVE="${ASTROWAX_GH_ARCHIVE:-panel.zip}"
 
-# V1.0 legacy repo (used when version 1.0 selected)
 V1_GH_USER="${ASTROWAX_V1_GH_USER:-AstroVoidHostDev}"
 V1_GH_REPO="${ASTROWAX_V1_GH_REPO:-AstroWax-Panel}"
+V1_DAEMON_REPO="${ASTROWAX_V1_DAEMON_REPO:-WaxDaemon}"
 
 WORK_DIR_NAME="panel"
 PANEL_DIR_NAME="astrowax-panel"
@@ -50,11 +49,10 @@ MAIN_PORT="6767"
 DEV_PORT="3000"
 SFTP_PORT="6868"
 
-# Selected version (set by choose_version)
 SELECTED_VERSION=""
 
 # ═══════════════════════════════════════════════════════════
-# ASCII BANNER — Big AWP
+# ASCII BANNER
 # ═══════════════════════════════════════════════════════════
 print_banner() {
     if [ -t 1 ]; then clear 2>/dev/null || true; fi
@@ -78,7 +76,7 @@ BANNER
 }
 
 # ═══════════════════════════════════════════════════════════
-# LOG HELPERS
+# LOGS
 # ═══════════════════════════════════════════════════════════
 log_info()    { echo -e "${LIGHT_PURPLE}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[✓]${NC} $1"; }
@@ -101,12 +99,11 @@ choose_version() {
     echo -e "    ║                                                           ║"
     echo -e "    ║    ${LIGHT_PURPLE}[2]${NC} ${WHITE}AstroWax Panel V1.0 (Legacy)${NC}                      ║"
     echo -e "    ║        ${GREY}Classic build • Node 20 + SQLite${NC}                    ║"
-    echo -e "    ║        ${GREY}Stable legacy release${NC}                              ║"
+    echo -e "    ║        ${GREY}Includes Panel + Node Daemon${NC}                       ║"
     echo -e "    ║                                                           ║"
     echo -e "${PURPLE}${BOLD}    ╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
-    # Non-interactive default
     if [ -n "$VERSION_CHOICE" ]; then
         local vc="$VERSION_CHOICE"
     elif [ ! -t 0 ]; then
@@ -273,12 +270,16 @@ check_system_deps() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# DOWNLOAD V1.80 — from panel.zip
+# DOWNLOAD V1.80 — FIXED (no double nesting)
 # ═══════════════════════════════════════════════════════════
 download_panel_v180() {
     local archive_url="https://github.com/${GH_USER}/${GH_REPO}/raw/${GH_BRANCH}/${GH_ARCHIVE}"
     local main_archive_url="https://github.com/${GH_USER}/${GH_REPO}/archive/refs/heads/${GH_BRANCH}.zip"
 
+    # Clean any old state
+    rm -rf "$WORK_DIR_NAME" "$GH_ARCHIVE" 2>/dev/null || true
+
+    # Download panel.zip
     if curl -fsSL "$archive_url" -o "$GH_ARCHIVE" 2>/dev/null; then
         :
     else
@@ -292,34 +293,30 @@ download_panel_v180() {
 
     if [ ! -f "$GH_ARCHIVE" ]; then return 1; fi
 
-    unzip -q -o "$GH_ARCHIVE" -d "$WORK_DIR_NAME" 2>/dev/null || return 1
+    # ✅ Extract WITHOUT -d — the zip contains panel/astrowax-panel/ internally
+    unzip -q -o "$GH_ARCHIVE" 2>/dev/null || return 1
     rm -f "$GH_ARCHIVE" 2>/dev/null || true
-    return 0
-}
 
-# ═══════════════════════════════════════════════════════════
-# DOWNLOAD V1.0 — from AstroWax-Panel repo
-# ═══════════════════════════════════════════════════════════
-download_panel_v10() {
-    local clone_dir="$(pwd)/${WORK_DIR_NAME}/v1.0"
-    mkdir -p "$WORK_DIR_NAME"
-    rm -rf "$clone_dir"
-
-    git clone "https://github.com/${V1_GH_USER}/${V1_GH_REPO}.git" "$clone_dir" 2>/dev/null || return 1
-
-    if [ ! -d "$clone_dir" ]; then return 1; fi
-
-    # Unzip panel.zip inside cloned repo
-    if [ -f "$clone_dir/panel.zip" ]; then
-        unzip -q -o "$clone_dir/panel.zip" -d "$clone_dir/extracted" 2>/dev/null || return 1
+    # The result should now be: ./panel/astrowax-panel/
+    # Fallback: if structure differs, auto-detect and flatten
+    if [ ! -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
+        local found_pkg=$(find "$WORK_DIR_NAME" -maxdepth 4 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | head -1)
+        if [ -n "$found_pkg" ]; then
+            local src_dir=$(dirname "$found_pkg")
+            if [ "$src_dir" != "$WORK_DIR_NAME/$PANEL_DIR_NAME" ]; then
+                rm -rf "$WORK_DIR_NAME/$PANEL_DIR_NAME" 2>/dev/null || true
+                mv "$src_dir" "$WORK_DIR_NAME/$PANEL_DIR_NAME" 2>/dev/null || true
+            fi
+        fi
     fi
 
-    # Locate "panel" dir inside extraction
-    if [ -d "$clone_dir/extracted/panel" ]; then
-        mv "$clone_dir/extracted/panel" "$clone_dir/panel" 2>/dev/null || true
-        rm -rf "$clone_dir/extracted" 2>/dev/null || true
+    if [ ! -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
+        echo "Extraction structure unexpected."
+        echo "Contents of $WORK_DIR_NAME:"
+        ls -la "$WORK_DIR_NAME" 2>/dev/null || true
+        find "$WORK_DIR_NAME" -maxdepth 3 -type d 2>/dev/null
+        return 1
     fi
-
     return 0
 }
 
@@ -517,7 +514,7 @@ EOF2
 }
 
 # ═══════════════════════════════════════════════════════════
-# INSTALL DEPS / BUILD / OWNER
+# DEPS / BUILD / OWNER
 # ═══════════════════════════════════════════════════════════
 install_dependencies() {
     if [ ! -f "package.json" ]; then
@@ -542,7 +539,7 @@ build_application() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# START / STOP PANEL
+# START / STOP
 # ═══════════════════════════════════════════════════════════
 stop_panel() {
     log_step "Stopping running panels..."
@@ -669,7 +666,7 @@ show_status() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# INSTALL — V1.80 (current)
+# INSTALL — V1.80
 # ═══════════════════════════════════════════════════════════
 install_panel_v180() {
     local TARGET=$1
@@ -679,7 +676,7 @@ install_panel_v180() {
     local PANEL_PATH=""
     if [ -f "package.json" ] && [ -d "src" ]; then
         PANEL_PATH="."
-    elif [ -d "$WORK_DIR_NAME/$PANEL_DIR_NAME" ] && [ -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
+    elif [ -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
         PANEL_PATH="$WORK_DIR_NAME/$PANEL_DIR_NAME"
     fi
 
@@ -689,10 +686,12 @@ install_panel_v180() {
         echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
         echo ""
         execute_step "Downloading AstroWax Panel V1.80" download_panel_v180
-        if [ -d "$WORK_DIR_NAME/$PANEL_DIR_NAME" ]; then
+        if [ -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
             PANEL_PATH="$WORK_DIR_NAME/$PANEL_DIR_NAME"
         else
             log_error "Panel not found after download."
+            log_info "Checking for extracted files..."
+            find . -maxdepth 4 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null
             exit 1
         fi
     fi
@@ -829,7 +828,7 @@ install_panel_v180() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# INSTALL — V1.0 (legacy)
+# INSTALL — V1.0 (Panel + Node Daemon)
 # ═══════════════════════════════════════════════════════════
 install_panel_v10() {
     print_banner
@@ -839,38 +838,90 @@ install_panel_v10() {
     echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
-    echo -e "${YELLOW}${BOLD}    ⚠ Legacy install uses its own flow (nvm + node 20 + sqlite).${NC}"
-    echo -e "${GREY}    It will be installed to ~/AstroWax-Panel${NC}"
-    echo ""
+    # ─── Ask what to install ───
+    echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
+    echo -e "    ║              ${WHITE}V1.0 INSTALL OPTIONS${PURPLE}                       ║"
+    echo -e "    ╠═══════════════════════════════════════════════════════════╣${NC}"
+    echo -e "    ║                                                           ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[1]${NC} ${WHITE}Install Panel only${NC}                                ║"
+    echo -e "    ║                                                           ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[2]${NC} ${WHITE}Install Node Daemon only${NC}                          ║"
+    echo -e "    ║                                                           ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[3]${NC} ${WHITE}Install BOTH (Panel + Node Daemon)${NC}                ║"
+    echo -e "    ║        ${GREY}Recommended for full setup${NC}                          ║"
+    echo -e "    ║                                                           ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[4]${NC} ${WHITE}Back${NC}                                              ║"
+    echo -e "    ║                                                           ║"
+    echo -e "${PURPLE}${BOLD}    ╚═══════════════════════════════════════════════════════════╝${NC}"
 
-    if [ -t 0 ]; then
-        read -p "    Continue with V1.0 install? (y/N): " CONFIRM
-        if [ "$CONFIRM" != "y" ] && [ "$CONFIRM" != "Y" ]; then
-            echo -e "    ${YELLOW}Cancelled.${NC}"
-            return 0
-        fi
+    local V1_CHOICE=""
+    if [ -n "$V1_INSTALL_CHOICE" ]; then
+        V1_CHOICE="$V1_INSTALL_CHOICE"
+    elif [ ! -t 0 ]; then
+        V1_CHOICE="3"
+    else
+        read -p "    Choose (1-4): " V1_CHOICE
     fi
 
+    case "$V1_CHOICE" in
+        1)
+            install_v10_panel
+            ;;
+        2)
+            install_v10_node_daemon
+            ;;
+        3)
+            install_v10_panel
+            echo ""
+            install_v10_node_daemon
+            ;;
+        4)
+            return
+            ;;
+        *)
+            log_error "Invalid selection."
+            return
+            ;;
+    esac
+}
+
+# ─── V1.0 PANEL ───
+install_v10_panel() {
     echo ""
-    log_step "Running V1.0 legacy installer..."
+    log_step "Installing AstroWax Panel V1.0..."
     echo ""
 
-    # Run the V1.0 install command (uses nvm + node 20)
-    bash -c 'set -e; export DEBIAN_FRONTEND=noninteractive; sudo apt-get update -y && sudo apt-get install -y curl git unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config libsqlite3-dev sqlite3 && (command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash) && export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"; [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh"; nvm install 20 && nvm use 20 && rm -rf ~/AstroWax-Panel && git clone https://github.com/AstroVoidHostDev/AstroWax-Panel ~/AstroWax-Panel && cd ~/AstroWax-Panel && unzip -oq panel.zip && cd panel && rm -rf node_modules package-lock.json && npm cache clean --force && npm install --legacy-peer-deps && npm install connect-sqlite3 sqlite3 && npm run seed && npm run createUser && exec node .'
+    bash -c 'set -e; export DEBIAN_FRONTEND=noninteractive; sudo apt-get update -y && sudo apt-get install -y curl git unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config libsqlite3-dev sqlite3 && (command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash) && export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"; [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh"; nvm install 20 && nvm use 20 && rm -rf ~/AstroWax-Panel && git clone https://github.com/AstroVoidHostDev/AstroWax-Panel ~/AstroWax-Panel && cd ~/AstroWax-Panel && unzip -oq panel.zip && cd panel && rm -rf node_modules package-lock.json && npm cache clean --force && npm install --legacy-peer-deps && npm install connect-sqlite3 sqlite3 && npm run seed && npm run createUser'
 
-    log_success "AstroWax Panel V1.0 installation complete!"
     echo ""
-    echo -e "${WHITE}    Next: install the V1.0 Node Daemon with this command:${NC}"
+    log_success "AstroWax Panel V1.0 installed to ~/AstroWax-Panel"
     echo ""
-    echo -e "${LIGHT_PURPLE}    bash -c 'set -e; export DEBIAN_FRONTEND=noninteractive; sudo apt-get update -y && sudo apt-get install -y curl git zip unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config && (command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash) && export NVM_DIR=\"\${NVM_DIR:-\$HOME/.nvm}\"; [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm; . \"\$NVM_DIR/nvm.sh\"; nvm install 20 && nvm use 20 && rm -rf ~/WaxDaemon && git clone https://github.com/AstroVoidHostDev/WaxDaemon ~/WaxDaemon && cd ~/WaxDaemon && unzip -oq waxdaemon.zip && cd daemon/daemon && [ -f index.js.txt ] && mv index.js.txt index.js || true && rm -rf node_modules package-lock.json && npm cache clean --force && npm install --legacy-peer-deps && echo -e \"\\n====================================\\nPaste your daemon config now.\\nAfter saving the config, run:\\nnode .\\n====================================\"'${NC}"
+    echo -e "    ${WHITE}Start it with:${NC}"
+    echo -e "    ${LIGHT_PURPLE}cd ~/AstroWax-Panel/panel && node .${NC}"
     echo ""
-    echo -e "${GREY}    Then run:${NC}"
+}
+
+# ─── V1.0 NODE DAEMON ───
+install_v10_node_daemon() {
+    echo ""
+    log_step "Installing AstroWax Node Daemon (V1.0)..."
+    echo ""
+
+    bash -c 'set -e; export DEBIAN_FRONTEND=noninteractive; sudo apt-get update -y && sudo apt-get install -y curl git zip unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config && (command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash) && export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"; [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh"; nvm install 20 && nvm use 20 && rm -rf ~/WaxDaemon && git clone https://github.com/AstroVoidHostDev/WaxDaemon ~/WaxDaemon && cd ~/WaxDaemon && unzip -oq waxdaemon.zip && cd daemon/daemon && [ -f index.js.txt ] && mv index.js.txt index.js || true && rm -rf node_modules package-lock.json && npm cache clean --force && npm install --legacy-peer-deps'
+
+    echo ""
+    log_success "AstroWax Node Daemon installed to ~/WaxDaemon/daemon/daemon"
+    echo ""
+    echo -e "${YELLOW}${BOLD}    ═══════════════════════════════════════════════════════${NC}"
+    echo -e "${WHITE}${BOLD}    Paste your daemon config now.${NC}"
+    echo -e "${WHITE}${BOLD}    After saving the config, run:${NC}"
     echo -e "${LIGHT_PURPLE}    cd ~/WaxDaemon/daemon/daemon && node .${NC}"
+    echo -e "${YELLOW}${BOLD}    ═══════════════════════════════════════════════════════${NC}"
     echo ""
 }
 
 # ═══════════════════════════════════════════════════════════
-# UPDATE PANEL — Git-based smart update (V1.80 only)
+# UPDATE PANEL
 # ═══════════════════════════════════════════════════════════
 update_panel() {
     print_banner
@@ -882,7 +933,7 @@ update_panel() {
     local PANEL_PATH=""
     if [ -f "package.json" ] && [ -d "src" ]; then
         PANEL_PATH="."
-    elif [ -d "$WORK_DIR_NAME/$PANEL_DIR_NAME" ] && [ -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
+    elif [ -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
         PANEL_PATH="$WORK_DIR_NAME/$PANEL_DIR_NAME"
     else
         log_error "Panel not installed. Please run install first."
@@ -906,11 +957,11 @@ update_panel() {
         downloaded=1
     else
         curl -fsSL "$main_archive_url" -o "/tmp/${GH_REPO}_update.zip" 2>/dev/null || {
-            log_error "Failed to download update from GitHub."
+            log_error "Failed to download update."
             rm -rf "$temp_dir"; return 1
         }
         unzip -q -o "/tmp/${GH_REPO}_update.zip" -d "/tmp/awp_update_extract" 2>/dev/null || {
-            log_error "Failed to extract repo archive."
+            log_error "Failed to extract."
             rm -rf "$temp_dir" "/tmp/${GH_REPO}_update.zip" "/tmp/awp_update_extract"; return 1
         }
         local found=$(find /tmp/awp_update_extract -name "$GH_ARCHIVE" -type f 2>/dev/null | head -1)
@@ -928,18 +979,26 @@ update_panel() {
         rm -rf "$temp_dir"; return 1
     fi
 
+    # Extract new
     unzip -q -o "/tmp/awp_update.zip" -d "$new_dir" 2>/dev/null || {
         log_error "Failed to extract new panel.zip"
         rm -rf "$temp_dir" "/tmp/awp_update.zip"; return 1
     }
 
+    # Auto-detect new root
     local actual_new_root="$new_dir"
     if [ -d "$new_dir/$WORK_DIR_NAME/$PANEL_DIR_NAME" ]; then
         actual_new_root="$new_dir/$WORK_DIR_NAME/$PANEL_DIR_NAME"
     elif [ -d "$new_dir/$PANEL_DIR_NAME" ]; then
         actual_new_root="$new_dir/$PANEL_DIR_NAME"
+    else
+        local found_pkg=$(find "$new_dir" -maxdepth 4 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | head -1)
+        if [ -n "$found_pkg" ]; then
+            actual_new_root=$(dirname "$found_pkg")
+        fi
     fi
 
+    # Copy current for comparison
     cp -r "$(pwd)" "$old_dir/" 2>/dev/null
     local actual_old_root="$old_dir/$(basename "$(pwd)")"
 
@@ -1019,7 +1078,6 @@ update_panel() {
     tar -czf "$BACKUP_NAME.tar.gz" --exclude=node_modules --exclude=.git . 2>/dev/null || true
 
     log_step "Applying new files..."
-    cd "$actual_new_root" || { log_error "Cannot enter new root"; cd - > /dev/null; return 1; }
     cd "$PANEL_PATH" || return 1
     rm -rf src server public 2>/dev/null || true
     rm -f package.json package-lock.json index.html vite.config.ts tsconfig.json server.ts ecosystem.config.cjs 2>/dev/null || true
@@ -1101,11 +1159,13 @@ uninstall_panel() {
 # ═══════════════════════════════════════════════════════════
 # DIRECT INVOCATION
 # ═══════════════════════════════════════════════════════════
-# Usage: bash install.sh [main|dev|update] [--version=1.80|1.0]
 for arg in "$@"; do
     case "$arg" in
         --version=1.0|--v=1.0|-v1.0) VERSION_CHOICE="2" ;;
         --version=1.80|--v=1.80|-v1.80) VERSION_CHOICE="1" ;;
+        --v1-install=panel) V1_INSTALL_CHOICE="1" ;;
+        --v1-install=node) V1_INSTALL_CHOICE="2" ;;
+        --v1-install=both) V1_INSTALL_CHOICE="3" ;;
     esac
 done
 
