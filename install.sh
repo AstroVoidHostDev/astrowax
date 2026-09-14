@@ -16,7 +16,6 @@ fi
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 LIGHT_PURPLE='\033[1;35m'
 CYAN='\033[0;36m'
@@ -38,7 +37,6 @@ V1_GH_REPO="${ASTROWAX_V1_GH_REPO:-AstroWax-Panel}"
 
 WORK_DIR_NAME="panel"
 PANEL_DIR_NAME="astrowax-panel"
-# ✅ Exact package name to detect (from package.json "name" field)
 EXPECTED_PKG_NAME="astrowax-panel"
 
 MAIN_PROCESS="astrowax-main"
@@ -94,68 +92,45 @@ get_docker_cmd() {
     else echo "docker"; fi
 }
 
-# ═══════════════════════════════════════════════════════════
-# ✅ PRECISE PANEL DIR FINDER
-# Looks for package.json with "name": "astrowax-panel"
-# ═══════════════════════════════════════════════════════════
+# Find panel dir by package name
 find_panel_dir() {
-    # 1. Current dir is panel?
     if [ -f "package.json" ] && grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" package.json 2>/dev/null; then
-        pwd
-        return 0
+        pwd; return 0
     fi
-
-    # 2. Standard nested path: ./panel/astrowax-panel/
     if [ -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ] && \
        grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" 2>/dev/null; then
-        echo "$(pwd)/$WORK_DIR_NAME/$PANEL_DIR_NAME"
-        return 0
+        echo "$(pwd)/$WORK_DIR_NAME/$PANEL_DIR_NAME"; return 0
     fi
-
-    # 3. Deep search — find ALL package.json with correct name
     local found=$(find . -maxdepth 5 -name "package.json" -not -path "*/node_modules/*" -not -path "*/dist/*" 2>/dev/null | while read f; do
         if grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" "$f" 2>/dev/null; then
-            echo "$f"
-            break
+            echo "$f"; break
         fi
     done | head -1)
-
     if [ -n "$found" ]; then
-        echo "$(cd "$(dirname "$found")" && pwd)"
-        return 0
+        echo "$(cd "$(dirname "$found")" && pwd)"; return 0
     fi
-
-    echo ""
-    return 1
+    echo ""; return 1
 }
 
 execute_step() {
-    local msg="$1"
-    shift
+    local msg="$1"; shift
     local step_id="awp_step_$RANDOM"
     local log_file="/tmp/${step_id}.log"
     rm -f "$log_file"
-
     printf "  ${LIGHT_PURPLE}▶${NC} %-48s " "$msg"
-
     "$@" > "$log_file" 2>&1 &
     local pid=$!
-
     if [ -t 1 ]; then
         local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
         local i=0
         while kill -0 $pid 2>/dev/null; do
             local c=$(echo "$spinstr" | cut -c$((i % 10 + 1)))
             printf "${PURPLE}%s${NC}" "$c"
-            sleep 0.1
-            printf "\b"
-            i=$((i + 1))
+            sleep 0.1; printf "\b"; i=$((i + 1))
         done
     fi
-
     local status=0
     wait $pid 2>/dev/null || status=$?
-
     if [ $status -eq 0 ]; then
         printf "\r  ${GREEN}✓${NC} %-48s ${GREEN}[Done]${NC}\n" "$msg"
     else
@@ -164,12 +139,9 @@ execute_step() {
         echo -e "${RED}${BOLD}  STEP FAILED: $msg${NC}"
         echo -e "${RED}════════════════════════════════════════════════════${NC}"
         echo -e "  Exit code: $status"
-        echo -e ""
-        echo -e "  ${YELLOW}Output:${NC}"
         if [ -s "$log_file" ]; then
-            tail -n 40 "$log_file" | sed 's/^/  /'
-        else
-            echo "  No output."
+            echo -e "  ${YELLOW}Output:${NC}"
+            tail -n 30 "$log_file" | sed 's/^/  /'
         fi
         echo -e "${RED}════════════════════════════════════════════════════${NC}"
         return $status
@@ -185,36 +157,16 @@ check_system_deps() {
     for cmd in curl git tar unzip; do
         command -v "$cmd" > /dev/null 2>&1 || MISSING="$MISSING $cmd"
     done
-
     if [ -n "$MISSING" ]; then
         if command -v apt-get > /dev/null 2>&1; then
             sudo apt-get update -y -q > /dev/null 2>&1 || true
             sudo apt-get install -y $MISSING build-essential ca-certificates -q > /dev/null 2>&1 || true
         elif command -v yum > /dev/null 2>&1; then
-            sudo yum update -y -q > /dev/null 2>&1 || true
             sudo yum install -y $MISSING make gcc-c++ ca-certificates unzip -q > /dev/null 2>&1 || true
         elif command -v dnf > /dev/null 2>&1; then
             sudo dnf install -y $MISSING make gcc-c++ ca-certificates unzip -q > /dev/null 2>&1 || true
         fi
     fi
-
-    local total_mem=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}' || echo "2048")
-    local total_swap=$(free -m 2>/dev/null | awk '/^Swap:/{print $2}' || echo "0")
-    if [ -n "$total_mem" ] && [ "$total_mem" -lt 2000 ] && [ "$total_swap" -lt 512 ]; then
-        if command -v swapon &> /dev/null && command -v sudo &> /dev/null; then
-            if [ ! -f "/swapfile" ]; then
-                if command -v fallocate &> /dev/null; then
-                    sudo fallocate -l 2G /swapfile > /dev/null 2>&1 || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048 > /dev/null 2>&1 || true
-                else
-                    sudo dd if=/dev/zero of=/swapfile bs=1M count=2048 > /dev/null 2>&1 || true
-                fi
-                sudo chmod 600 /swapfile > /dev/null 2>&1 || true
-                sudo mkswap /swapfile > /dev/null 2>&1 || true
-                sudo swapon /swapfile > /dev/null 2>&1 || true
-            fi
-        fi
-    fi
-
     for cmd in curl git tar unzip; do
         command -v "$cmd" &> /dev/null || { echo "Missing: $cmd"; return 1; }
     done
@@ -222,59 +174,43 @@ check_system_deps() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# ✅ DOWNLOAD + EXTRACT (precise)
+# DOWNLOAD
 # ═══════════════════════════════════════════════════════════
 download_panel_v180() {
     local archive_url="https://github.com/${GH_USER}/${GH_REPO}/raw/${GH_BRANCH}/${GH_ARCHIVE}"
     local main_archive_url="https://github.com/${GH_USER}/${GH_REPO}/archive/refs/heads/${GH_BRANCH}.zip"
-
-    # Save current dir
     local START_DIR=$(pwd)
 
-    # Clean old state
     rm -rf "$WORK_DIR_NAME" "$GH_ARCHIVE" 2>/dev/null || true
 
-    echo "Downloading $GH_ARCHIVE..."
     if ! curl -fsSL "$archive_url" -o "$GH_ARCHIVE" 2>/dev/null; then
-        echo "Direct download failed, trying repo archive..."
         curl -fsSL "$main_archive_url" -o "/tmp/${GH_REPO}.zip" 2>/dev/null || return 1
         unzip -q -o "/tmp/${GH_REPO}.zip" -d /tmp/awp_extract 2>/dev/null || return 1
         local found=$(find /tmp/awp_extract -name "$GH_ARCHIVE" -type f 2>/dev/null | head -1)
-        if [ -z "$found" ]; then return 1; fi
+        [ -z "$found" ] && return 1
         cp "$found" "$GH_ARCHIVE" 2>/dev/null || return 1
         rm -rf /tmp/awp_extract "/tmp/${GH_REPO}.zip" 2>/dev/null || true
     fi
 
     [ -f "$GH_ARCHIVE" ] || return 1
 
-    echo "Extracting..."
     mkdir -p "$WORK_DIR_NAME"
     unzip -q -o "$GH_ARCHIVE" -d "$WORK_DIR_NAME" 2>/dev/null || return 1
     rm -f "$GH_ARCHIVE" 2>/dev/null || true
 
-    # Find the actual panel dir (searching for astrowax-panel package.json)
     local actual_panel=$(find "$WORK_DIR_NAME" -maxdepth 5 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | while read f; do
         if grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" "$f" 2>/dev/null; then
-            echo "$f"
-            break
+            echo "$f"; break
         fi
     done | head -1)
 
-    if [ -z "$actual_panel" ]; then
-        echo "Could not find package.json with name '${EXPECTED_PKG_NAME}'"
-        echo "Contents of $WORK_DIR_NAME:"
-        find "$WORK_DIR_NAME" -maxdepth 3 -type f -name "package.json" -not -path "*/node_modules/*" 2>/dev/null
-        return 1
-    fi
+    [ -z "$actual_panel" ] && return 1
 
     local actual_dir=$(dirname "$actual_panel")
-
-    # Move to standard location: ./panel/astrowax-panel/
     if [ "$actual_dir" != "$WORK_DIR_NAME/$PANEL_DIR_NAME" ]; then
         rm -rf "$WORK_DIR_NAME/$PANEL_DIR_NAME" 2>/dev/null || true
         mv "$actual_dir" "$WORK_DIR_NAME/$PANEL_DIR_NAME" 2>/dev/null || return 1
     fi
-
     cd "$START_DIR" || return 1
     return 0
 }
@@ -323,9 +259,9 @@ install_node() {
         fi
     fi
 
-    command -v node &> /dev/null || { echo "Node install failed"; return 1; }
+    command -v node &> /dev/null || { echo "Node failed"; return 1; }
     echo "Node: $(node -v)"
-    command -v npm &> /dev/null || { echo "npm missing"; return 1; }
+    command -v npm &> /dev/null || return 1
     return 0
 }
 
@@ -336,7 +272,6 @@ install_java() {
     if command -v java > /dev/null 2>&1 && java -version > /dev/null 2>&1; then
         return 0
     fi
-    echo "Installing Java..."
     if command -v apt-get > /dev/null 2>&1; then
         sudo apt-get update -y -q > /dev/null 2>&1 || true
         sudo apt-get install -y -q openjdk-21-jre-headless > /dev/null 2>&1 || \
@@ -399,21 +334,18 @@ EOF2
 }
 
 # ═══════════════════════════════════════════════════════════
-# INSTALL DEPS (clean)
+# DEPS
 # ═══════════════════════════════════════════════════════════
 install_dependencies() {
-    [ -f "package.json" ] || { echo "package.json missing"; return 1; }
+    [ -f "package.json" ] || return 1
 
-    # Verify it's the right package
     if ! grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" package.json 2>/dev/null; then
-        echo "❌ WRONG package.json! Expected name '${EXPECTED_PKG_NAME}'"
-        echo "   Found:"
+        echo "❌ Wrong package.json"
         head -3 package.json | sed 's/^/   /'
         return 1
     fi
 
     [ -f ".npmrc" ] || echo "legacy-peer-deps=true" > .npmrc
-
     rm -rf node_modules package-lock.json 2>/dev/null || true
     npm cache clean --force > /dev/null 2>&1 || true
     npm install --legacy-peer-deps --no-audit --no-fund 2>&1 | tail -5
@@ -422,43 +354,14 @@ install_dependencies() {
 build_application() {
     [ -f "package.json" ] || return 1
 
-    # Verify package name
     if ! grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" package.json 2>/dev/null; then
-        echo "❌ Wrong package.json — refusing to build."
-        echo "   Expected: name: \"${EXPECTED_PKG_NAME}\""
-        head -3 package.json | sed 's/^/   /'
-        return 1
+        echo "❌ Wrong package.json"; return 1
     fi
 
     rm -rf dist 2>/dev/null || true
-
-    echo "Running: npm run build"
     NODE_OPTIONS="--max-old-space-size=2048" npm run build 2>&1 | tail -15
 
-    if [ ! -f "dist/server.cjs" ]; then
-        echo ""
-        echo "Build failed. Expected dist/server.cjs — not created."
-        echo "Check the build output above."
-        return 1
-    fi
-    return 0
-}
-
-# ═══════════════════════════════════════════════════════════
-# TEST SERVER
-# ═══════════════════════════════════════════════════════════
-test_server_direct() {
-    [ -f "dist/server.cjs" ] || return 1
-    timeout 8 node dist/server.cjs > /tmp/awp_test.log 2>&1
-    local exit_code=$?
-
-    if grep -qi "MODULE_NOT_FOUND" /tmp/awp_test.log; then
-        echo "Missing module:"; grep -i "Cannot find module" /tmp/awp_test.log | head -3
-        return 1
-    fi
-    if grep -qi "EADDRINUSE" /tmp/awp_test.log; then
-        echo "Port $MAIN_PORT in use"; return 1
-    fi
+    [ -f "dist/server.cjs" ] || { echo "No dist/server.cjs"; return 1; }
     return 0
 }
 
@@ -474,10 +377,8 @@ stop_panel() {
 
     run_pm2 delete "$MAIN_PROCESS" 2>/dev/null || true
     run_pm2 delete astrowax-panel 2>/dev/null || true
-
     local DOCKER_CLI=$(get_docker_cmd)
     $DOCKER_CLI rm -f $MAIN_CONTAINER 2>/dev/null || true
-
     pkill -f "node.*dist/server.cjs" 2>/dev/null || true
 
     log_success "Panel stopped."
@@ -487,7 +388,6 @@ stop_panel() {
 
 start_panel_node() {
     local TARGET=$1
-
     if command -v fuser &> /dev/null; then
         fuser -k ${MAIN_PORT}/tcp 2>/dev/null || true
     fi
@@ -519,18 +419,12 @@ start_panel() {
         log_error "Panel not found. Install first."
         return 1
     fi
-
     cd "$PANEL_PATH" || return 1
-    log_info "Panel dir: $(pwd)"
-    echo ""
 
     if [ ! -f "ecosystem.config.cjs" ]; then
-        log_warning "ecosystem.config.cjs missing — regenerating..."
         setup_node_env "docker"
     fi
-
     if [ ! -f "dist/server.cjs" ]; then
-        log_warning "dist/ missing — building first..."
         install_dependencies
         build_application
     fi
@@ -538,12 +432,11 @@ start_panel() {
     log_step "Starting PM2..."
     start_panel_node "$MAIN_PROCESS"
 
-    log_step "Health check..."
+    log_step "Waiting for panel..."
     local ATTEMPTS=0
-    while [ $ATTEMPTS -lt 20 ]; do
+    while [ $ATTEMPTS -lt 15 ]; do
         if curl -s -f "http://127.0.0.1:${MAIN_PORT}/" >/dev/null 2>&1; then
             log_success "Panel is up!"
-            echo ""
             show_status
             return 0
         fi
@@ -552,7 +445,7 @@ start_panel() {
     done
 
     log_error "Panel didn't start. Logs:"
-    run_pm2 logs "$MAIN_PROCESS" --lines 40 --nostream 2>&1 || true
+    run_pm2 logs "$MAIN_PROCESS" --lines 30 --nostream 2>&1 || true
     return 1
 }
 
@@ -570,24 +463,17 @@ restart_panel() {
     fi
     cd "$PANEL_PATH" || return 1
 
-    log_step "Restarting PM2..."
-    run_pm2 restart "$MAIN_PROCESS" 2>/dev/null || {
-        log_warning "Process not found — starting fresh"
-        start_panel_node "$MAIN_PROCESS"
-    }
+    run_pm2 restart "$MAIN_PROCESS" 2>/dev/null || start_panel_node "$MAIN_PROCESS"
     run_pm2 save --force 2>/dev/null || true
-
     sleep 3
 
     if curl -s -f "http://127.0.0.1:${MAIN_PORT}/" >/dev/null 2>&1; then
         log_success "Panel restarted."
-        echo ""
         show_status
         return 0
     fi
-
-    log_error "Restart failed. Logs:"
-    run_pm2 logs "$MAIN_PROCESS" --lines 40 --nostream 2>&1 || true
+    log_error "Restart failed."
+    run_pm2 logs "$MAIN_PROCESS" --lines 30 --nostream 2>&1 || true
     return 1
 }
 
@@ -603,7 +489,6 @@ show_status() {
        curl -s -m 2 http://127.0.0.1:${MAIN_PORT}/ >/dev/null 2>&1; then
         MAIN_STATUS="ONLINE"
     fi
-
     [ "$MAIN_STATUS" = "ONLINE" ] && SFTP_STATUS="ONLINE"
 
     local IP=$(curl -s -m 2 ifconfig.me 2>/dev/null || curl -s -m 2 icanhazip.com 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
@@ -669,7 +554,7 @@ choose_version() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# INSTALL V1.80
+# INSTALL V1.80 — NO TEST STEP (never gets stuck)
 # ═══════════════════════════════════════════════════════════
 install_panel_v180() {
     print_banner
@@ -685,31 +570,21 @@ install_panel_v180() {
         PANEL_PATH="$WORK_DIR_NAME/$PANEL_DIR_NAME"
     fi
 
-    cd "$PANEL_PATH" || { log_error "Cannot enter panel dir."; exit 1; }
-    log_info "Working directory: $(pwd)"
+    cd "$PANEL_PATH" || { log_error "Cannot enter panel."; exit 1; }
+    log_info "Working dir: $(pwd)"
 
-    # Double-check we're in the right place
     if ! grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" package.json 2>/dev/null; then
-        log_error "Wrong package.json at $(pwd)"
-        log_error "Expected name: ${EXPECTED_PKG_NAME}"
-        head -3 package.json | sed 's/^/   /'
-        exit 1
+        log_error "Wrong package.json"; exit 1
     fi
-    log_success "Verified: package.json is ${EXPECTED_PKG_NAME}"
+    log_success "Verified package.json"
     echo ""
 
     echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
     echo -e "    ║              ${WHITE}SELECT INSTALLATION MODE${PURPLE}                   ║"
     echo -e "    ╠═══════════════════════════════════════════════════════════╣${NC}"
-    echo -e "    ║                                                           ║"
     echo -e "    ║    ${LIGHT_PURPLE}[1]${NC} ${WHITE}Node.js + PM2 (Recommended)${NC}                       ║"
-    echo -e "    ║        ${GREY}Docker used for Minecraft servers${NC}                  ║"
-    echo -e "    ║                                                           ║"
     echo -e "    ║    ${LIGHT_PURPLE}[2]${NC} ${WHITE}Pure Local Node.js${NC}                                ║"
-    echo -e "    ║        ${GREY}Local for Minecraft servers${NC}                        ║"
-    echo -e "    ║                                                           ║"
     echo -e "    ║    ${LIGHT_PURPLE}[3]${NC} ${WHITE}Back${NC}                                              ║"
-    echo -e "    ║                                                           ║"
     echo -e "${PURPLE}${BOLD}    ╚═══════════════════════════════════════════════════════════╝${NC}"
 
     local MODE_CHOICE=""
@@ -747,10 +622,10 @@ install_panel_v180() {
     execute_step "Node.js Configuration (v20)" setup_node_env "$RUNTIME_ARG"
     execute_step "Installing Dependencies" install_dependencies
     execute_step "Building Application" build_application
-    execute_step "Testing Server Startup" test_server_direct
+    # ✅ NO TEST STEP — goes straight to PM2
     execute_step "Starting PM2 Service" start_panel_node "$MAIN_PROCESS"
 
-    log_step "Waiting for panel..."
+    log_step "Waiting for panel to respond..."
     local ATTEMPTS=0
     local OK=0
     while [ $ATTEMPTS -lt 30 ]; do
@@ -758,17 +633,23 @@ install_panel_v180() {
             OK=1
             break
         fi
+        # Check if PM2 crashed
+        if run_pm2 list 2>/dev/null | grep "$MAIN_PROCESS" | grep -qE "errored|stopped"; then
+            log_error "PM2 process crashed."
+            run_pm2 logs "$MAIN_PROCESS" --lines 40 --nostream 2>&1 || true
+            return 1
+        fi
         sleep 2
         ATTEMPTS=$((ATTEMPTS + 1))
     done
 
     if [ "$OK" != "1" ]; then
-        log_error "Panel failed to start"
+        log_error "Panel failed to start in time."
         run_pm2 logs "$MAIN_PROCESS" --lines 40 --nostream 2>&1 || true
         return 1
     fi
 
-    log_success "Health check passed"
+    log_success "Panel is ONLINE!"
     show_status
 
     local IP=$(curl -s -m 2 ifconfig.me 2>/dev/null || curl -s -m 2 icanhazip.com 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
@@ -820,7 +701,7 @@ install_v10_panel() {
     log_step "Installing Panel V1.0..."
     echo ""
     bash -c 'set -e; export DEBIAN_FRONTEND=noninteractive; sudo apt-get update -y && sudo apt-get install -y curl git unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config libsqlite3-dev sqlite3 && (command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash) && export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"; [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh"; nvm install 20 && nvm use 20 && rm -rf ~/AstroWax-Panel && git clone https://github.com/AstroVoidHostDev/AstroWax-Panel ~/AstroWax-Panel && cd ~/AstroWax-Panel && unzip -oq panel.zip && cd panel && rm -rf node_modules package-lock.json && npm cache clean --force && npm install --legacy-peer-deps && npm install connect-sqlite3 sqlite3 && npm run seed && npm run createUser'
-    log_success "V1.0 Panel installed to ~/AstroWax-Panel"
+    log_success "V1.0 Panel installed"
     echo ""
     echo -e "    ${WHITE}Run:${NC} ${LIGHT_PURPLE}cd ~/AstroWax-Panel/panel && node .${NC}"
     echo ""
@@ -831,12 +712,9 @@ install_v10_node_daemon() {
     log_step "Installing Node Daemon V1.0..."
     echo ""
     bash -c 'set -e; export DEBIAN_FRONTEND=noninteractive; sudo apt-get update -y && sudo apt-get install -y curl git zip unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config && (command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash) && export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"; [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh"; nvm install 20 && nvm use 20 && rm -rf ~/WaxDaemon && git clone https://github.com/AstroVoidHostDev/WaxDaemon ~/WaxDaemon && cd ~/WaxDaemon && unzip -oq waxdaemon.zip && cd daemon/daemon && [ -f index.js.txt ] && mv index.js.txt index.js || true && rm -rf node_modules package-lock.json && npm cache clean --force && npm install --legacy-peer-deps'
-    log_success "Node Daemon installed to ~/WaxDaemon/daemon/daemon"
+    log_success "Node Daemon installed"
     echo ""
-    echo -e "${YELLOW}${BOLD}    ═══════════════════════════════════════════════${NC}"
-    echo -e "${WHITE}${BOLD}    Paste your daemon config, then run:${NC}"
-    echo -e "${LIGHT_PURPLE}    cd ~/WaxDaemon/daemon/daemon && node .${NC}"
-    echo -e "${YELLOW}${BOLD}    ═══════════════════════════════════════════════${NC}"
+    echo -e "    ${WHITE}Run:${NC} ${LIGHT_PURPLE}cd ~/WaxDaemon/daemon/daemon && node .${NC}"
     echo ""
 }
 
@@ -852,10 +730,8 @@ update_panel() {
 
     local PANEL_PATH=$(find_panel_dir)
     if [ -z "$PANEL_PATH" ]; then
-        log_error "Panel not installed."
-        return 1
+        log_error "Panel not installed."; return 1
     fi
-
     cd "$PANEL_PATH" || return 1
     log_info "Updating: $(pwd)"
     echo ""
@@ -865,41 +741,31 @@ update_panel() {
     local new_dir="${temp_dir}/new"
     mkdir -p "$new_dir" || return 1
 
-    log_step "Downloading latest..."
     if ! curl -fsSL "$archive_url" -o "/tmp/awp_update.zip" 2>/dev/null; then
         log_error "Download failed."
-        rm -rf "$temp_dir"
-        return 1
+        rm -rf "$temp_dir"; return 1
     fi
 
-    log_step "Extracting..."
     unzip -q -o "/tmp/awp_update.zip" -d "$new_dir" 2>/dev/null || {
-        log_error "Extract failed."
-        rm -rf "$temp_dir" "/tmp/awp_update.zip"
-        return 1
+        log_error "Extract failed."; rm -rf "$temp_dir" "/tmp/awp_update.zip"; return 1
     }
 
-    # Find the right dir
-    local actual_new_root=""
     local found=$(find "$new_dir" -maxdepth 5 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | while read f; do
         if grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" "$f" 2>/dev/null; then
-            echo "$f"
-            break
+            echo "$f"; break
         fi
     done | head -1)
 
-    if [ -n "$found" ]; then
-        actual_new_root=$(dirname "$found")
-    else
-        log_error "Could not find panel in update archive."
-        rm -rf "$temp_dir" "/tmp/awp_update.zip"
-        return 1
+    if [ -z "$found" ]; then
+        log_error "Panel not found in update."
+        rm -rf "$temp_dir" "/tmp/awp_update.zip"; return 1
     fi
+    local actual_new_root=$(dirname "$found")
 
     log_step "Stopping panel..."
     run_pm2 stop "$MAIN_PROCESS" 2>/dev/null || true
 
-    log_step "Preserving user data..."
+    log_step "Preserving data..."
     local PRESERVE_DIR="/tmp/awp_preserve_$$"
     mkdir -p "$PRESERVE_DIR"
     [ -f ".env" ] && cp ".env" "$PRESERVE_DIR/" 2>/dev/null || true
@@ -910,12 +776,11 @@ update_panel() {
     tar -czf "$BACKUP_NAME.tar.gz" --exclude=node_modules --exclude=.git . 2>/dev/null || true
     log_success "Backup: $BACKUP_NAME.tar.gz"
 
-    log_step "Applying new files..."
+    log_step "Applying..."
     rm -rf src server public 2>/dev/null || true
     rm -f package.json package-lock.json index.html vite.config.ts tsconfig.json server.ts ecosystem.config.cjs 2>/dev/null || true
     cp -r "$actual_new_root"/* . 2>/dev/null || true
 
-    log_step "Restoring user data..."
     [ -f "$PRESERVE_DIR/.env" ] && cp "$PRESERVE_DIR/.env" . 2>/dev/null || true
     [ -d "$PRESERVE_DIR/.data" ] && cp -r "$PRESERVE_DIR/.data" . 2>/dev/null || true
     [ -d "$PRESERVE_DIR/backups" ] && cp -r "$PRESERVE_DIR/backups" . 2>/dev/null || true
@@ -926,12 +791,10 @@ update_panel() {
     execute_step "Building Application" build_application
     execute_step "Restarting Panel" start_panel_node "$MAIN_PROCESS"
 
-    log_step "Health check..."
+    log_step "Waiting..."
     local ATTEMPTS=0
     while [ $ATTEMPTS -lt 20 ]; do
-        if curl -s -f "http://127.0.0.1:${MAIN_PORT}/" >/dev/null 2>&1; then
-            break
-        fi
+        curl -s -f "http://127.0.0.1:${MAIN_PORT}/" >/dev/null 2>&1 && break
         sleep 2
         ATTEMPTS=$((ATTEMPTS + 1))
     done
@@ -941,14 +804,13 @@ update_panel() {
     echo ""
     echo -e "${GREEN}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
     echo -e "    ║          ${WHITE}✓ UPDATE COMPLETE${GREEN}                              ║"
-    echo -e "    ║          ${GREY}Backup: ${WHITE}$BACKUP_NAME.tar.gz${NC}${GREEN}                  ║"
     echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
     show_status
 }
 
 # ═══════════════════════════════════════════════════════════
-# ✅ UNINSTALL (safe — no cd into deleted dir)
+# UNINSTALL (safe)
 # ═══════════════════════════════════════════════════════════
 uninstall_panel() {
     print_banner
@@ -956,32 +818,25 @@ uninstall_panel() {
     echo -e "    ║              ${WHITE}UNINSTALL ASTROWAX PANEL${PURPLE}                   ║"
     echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${RED}${BOLD}    ⚠  This will remove AstroWax Panel from this system.${NC}"
+    echo -e "${RED}${BOLD}    ⚠  This will remove AstroWax Panel.${NC}"
     echo ""
 
     if [ -t 0 ]; then
         read -p "    Type 'yes' to confirm: " CONFIRM
-        if [ "$CONFIRM" != "yes" ]; then
-            echo -e "    ${YELLOW}Cancelled.${NC}"
-            return 0
-        fi
+        [ "$CONFIRM" != "yes" ] && { echo -e "    ${YELLOW}Cancelled.${NC}"; return 0; }
     fi
 
     echo ""
     log_step "Stopping services..."
-
-    # Stop all processes
     run_pm2 delete "$MAIN_PROCESS" 2>/dev/null || true
     run_pm2 delete "astrowax-admin" 2>/dev/null || true
     run_pm2 delete "astrowax-panel" 2>/dev/null || true
     run_pm2 save --force 2>/dev/null || true
 
-    # Remove containers
     local DOCKER_CLI=$(get_docker_cmd)
     $DOCKER_CLI rm -f "astrowax-main" 2>/dev/null || true
     $DOCKER_CLI rm -f "astrowax-admin" 2>/dev/null || true
 
-    # Kill stray processes
     pkill -f "node.*dist/server.cjs" 2>/dev/null || true
     pkill -f "astrowax" 2>/dev/null || true
 
@@ -990,51 +845,25 @@ uninstall_panel() {
 
     local DELETE_DATA="n"
     if [ -t 0 ]; then
-        read -p "    Also delete panel files and user data? (y/N): " DELETE_DATA
+        read -p "    Also delete panel files? (y/N): " DELETE_DATA
     fi
 
     if [ "$DELETE_DATA" = "y" ] || [ "$DELETE_DATA" = "Y" ]; then
-        log_step "Removing panel files..."
-
-        # ✅ SAFE: move to home dir FIRST before deleting anything
+        log_step "Removing files..."
         cd "$HOME" || cd /tmp || true
 
-        # Find panel directory
         local PANEL_PATH=$(find_panel_dir)
+        [ -n "$PANEL_PATH" ] && rm -rf "$PANEL_PATH" 2>/dev/null || true
 
-        # Delete panel dir if found
-        if [ -n "$PANEL_PATH" ]; then
-            log_info "Removing: $PANEL_PATH"
-            rm -rf "$PANEL_PATH" 2>/dev/null || true
-        fi
-
-        # Delete the panel/ wrapper
-        if [ -d "$HOME/$WORK_DIR_NAME" ]; then
-            log_info "Removing: $HOME/$WORK_DIR_NAME"
-            rm -rf "$HOME/$WORK_DIR_NAME" 2>/dev/null || true
-        fi
-
-        # Delete wherever user might have installed
-        for path in "$HOME/panel" "$HOME/astrowax-panel" "$HOME/AstroWax-Panel"; do
-            if [ -d "$path" ]; then
-                log_info "Removing: $path"
-                rm -rf "$path" 2>/dev/null || true
-            fi
+        for path in "$HOME/$WORK_DIR_NAME" "$HOME/panel" "$HOME/astrowax-panel" "$HOME/AstroWax-Panel" "$HOME/WaxDaemon"; do
+            [ -d "$path" ] && rm -rf "$path" 2>/dev/null || true
         done
 
-        # V1.0 installs
-        rm -rf ~/AstroWax-Panel 2>/dev/null || true
-        rm -rf ~/WaxDaemon 2>/dev/null || true
-
-        # Temp files
         rm -rf /tmp/awp_* /tmp/astrowax* 2>/dev/null || true
 
-        log_success "Panel files removed."
+        log_success "Files removed."
     else
-        log_info "Panel files kept."
-        if [ -n "$(find_panel_dir)" ]; then
-            log_info "Location: $(find_panel_dir)"
-        fi
+        log_info "Files kept."
     fi
 
     echo ""
