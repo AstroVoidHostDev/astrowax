@@ -234,7 +234,6 @@ check_system_deps() {
         fi
     fi
 
-    # Swap if low memory
     local total_mem=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}' || echo "2048")
     local total_swap=$(free -m 2>/dev/null | awk '/^Swap:/{print $2}' || echo "0")
     if [ -n "$total_mem" ] && [ "$total_mem" -lt 2000 ] && [ "$total_swap" -lt 512 ]; then
@@ -264,7 +263,7 @@ check_system_deps() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# DOWNLOAD V1.80 — Fixed extraction (no double nesting)
+# DOWNLOAD V1.80
 # ═══════════════════════════════════════════════════════════
 download_panel_v180() {
     local archive_url="https://github.com/${GH_USER}/${GH_REPO}/raw/${GH_BRANCH}/${GH_ARCHIVE}"
@@ -285,11 +284,9 @@ download_panel_v180() {
 
     if [ ! -f "$GH_ARCHIVE" ]; then return 1; fi
 
-    # ✅ Extract WITHOUT -d
     unzip -q -o "$GH_ARCHIVE" 2>/dev/null || return 1
     rm -f "$GH_ARCHIVE" 2>/dev/null || true
 
-    # Auto-detect package.json
     if [ ! -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
         local found_pkg=$(find "$WORK_DIR_NAME" -maxdepth 4 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | head -1)
         if [ -n "$found_pkg" ]; then
@@ -474,7 +471,7 @@ EOF2
 }
 
 # ═══════════════════════════════════════════════════════════
-# DEPS / BUILD / OWNER
+# DEPS / BUILD
 # ═══════════════════════════════════════════════════════════
 install_dependencies() {
     if [ ! -f "package.json" ]; then
@@ -484,10 +481,6 @@ install_dependencies() {
         return 0
     fi
     npm install --no-audit --no-fund --legacy-peer-deps 2>&1 || npm install --no-audit --no-fund 2>&1
-}
-
-setup_owner() {
-    npm run createuser
 }
 
 build_application() {
@@ -569,7 +562,7 @@ health_check() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# STATUS — CLEAN: NO DEV PANEL LINE
+# STATUS
 # ═══════════════════════════════════════════════════════════
 show_status() {
     local MAIN_STATUS="OFF"
@@ -612,7 +605,7 @@ show_status() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# INSTALL V1.80
+# INSTALL V1.80 — No owner creation (register via web UI)
 # ═══════════════════════════════════════════════════════════
 install_panel_v180() {
     print_banner
@@ -674,46 +667,6 @@ install_panel_v180() {
         log_error "Invalid selection."; return 1
     fi
 
-    print_banner
-    echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
-    echo -e "    ║              ${WHITE}CREATE OWNER ACCOUNT${PURPLE}                       ║"
-    echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-
-    local OWNER_USER=""
-    local OWNER_PASS=""
-    local OWNER_PASS2=""
-
-    if [ -n "$ASTROWAX_OWNER_USER" ] && [ -n "$ASTROWAX_OWNER_PASS" ]; then
-        OWNER_USER="$ASTROWAX_OWNER_USER"
-        OWNER_PASS="$ASTROWAX_OWNER_PASS"
-    elif [ ! -t 0 ]; then
-        OWNER_USER="owner"
-        OWNER_PASS="owner12345"
-    else
-        while true; do
-            read -p "    Username: " OWNER_USER
-            if [ ${#OWNER_USER} -ge 3 ]; then break; fi
-            echo "    Username must be at least 3 characters."
-        done
-        while true; do
-            read -s -p "    Password: " OWNER_PASS
-            echo ""
-            read -s -p "    Confirm Password: " OWNER_PASS2
-            echo ""
-            if [ ${#OWNER_PASS} -lt 6 ]; then
-                echo "    Password must be at least 6 characters."
-            elif [ "$OWNER_PASS" = "$OWNER_PASS2" ] && [ -n "$OWNER_PASS" ]; then
-                break
-            else
-                echo "    Passwords do not match."
-            fi
-        done
-    fi
-
-    export ASTROWAX_OWNER_USER="$OWNER_USER"
-    export ASTROWAX_OWNER_PASS="$OWNER_PASS"
-
     mkdir -p .data backups
     if [ ! -f ".env" ]; then
         if [ -f ".env.example" ]; then
@@ -740,7 +693,6 @@ install_panel_v180() {
 
     execute_step "Node.js Configuration" setup_node_env "$RUNTIME_ARG"
     execute_step "NPM Dependencies" install_dependencies
-    execute_step "Owner Account Setup" setup_owner
     execute_step "Building Application" build_application
     execute_step "Starting PM2 Service" start_panel_node "$MAIN_PROCESS"
     execute_step "Health Check" health_check $MAIN_PORT pm2 "$MAIN_PROCESS"
@@ -754,8 +706,12 @@ install_panel_v180() {
     echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "    ${WHITE}Panel URL${NC}  : ${LIGHT_PURPLE}http://${IP}:${MAIN_PORT}${NC}"
-    echo -e "    ${WHITE}Username${NC}   : ${LIGHT_PURPLE}${OWNER_USER}${NC}"
     echo -e "    ${WHITE}Version${NC}    : ${LIGHT_PURPLE}AstroWax Panel V1.80${NC}"
+    echo ""
+    echo -e "    ${YELLOW}${BOLD}First-time setup:${NC}"
+    echo -e "    ${WHITE}1.${NC} Open ${LIGHT_PURPLE}http://${IP}:${MAIN_PORT}/register${NC}"
+    echo -e "    ${WHITE}2.${NC} Create your account — ${YELLOW}first user becomes OWNER${NC} automatically"
+    echo -e "    ${WHITE}3.${NC} Login and start managing your servers"
     echo ""
     echo -e "    ${GREY}Made by ${LIGHT_PURPLE}Itzytansh${NC}"
     echo ""
@@ -932,45 +888,7 @@ update_panel() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# CREATE OWNER
-# ═══════════════════════════════════════════════════════════
-create_owner_user() {
-    print_banner
-    echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
-    echo -e "    ║              ${WHITE}CREATE OWNER ACCOUNT${PURPLE}                       ║"
-    echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
-
-    local OWNER_USER=""
-    local OWNER_PASS=""
-    local OWNER_PASS2=""
-
-    while true; do
-        read -p "    Username: " OWNER_USER
-        if [ ${#OWNER_USER} -ge 3 ]; then break; fi
-        echo "    Username must be at least 3 characters."
-    done
-    while true; do
-        read -s -p "    Password: " OWNER_PASS
-        echo ""
-        read -s -p "    Confirm Password: " OWNER_PASS2
-        echo ""
-        if [ ${#OWNER_PASS} -lt 6 ]; then
-            echo "    Password must be at least 6 characters."
-        elif [ "$OWNER_PASS" = "$OWNER_PASS2" ] && [ -n "$OWNER_PASS" ]; then
-            break
-        else
-            echo "    Passwords do not match."
-        fi
-    done
-
-    export ASTROWAX_OWNER_USER="$OWNER_USER"
-    export ASTROWAX_OWNER_PASS="$OWNER_PASS"
-    execute_step "Setting up Owner Account" setup_owner
-    log_success "Owner user created!"
-}
-
-# ═══════════════════════════════════════════════════════════
-# UNINSTALL — AstroWax Panel (was JTG Panel)
+# UNINSTALL
 # ═══════════════════════════════════════════════════════════
 uninstall_panel() {
     print_banner
@@ -978,7 +896,7 @@ uninstall_panel() {
     echo -e "    ║              ${WHITE}UNINSTALL ASTROWAX PANEL${PURPLE}                   ║"
     echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${RED}${BOLD}    ⚠ This will remove AstroWax Panel from this system.${NC}"
+    echo -e "${RED}${BOLD}    ⚠  This will remove AstroWax Panel from this system.${NC}"
     echo ""
 
     if [ -t 0 ]; then
@@ -992,19 +910,16 @@ uninstall_panel() {
     echo ""
     log_step "Stopping AstroWax services..."
 
-    # Stop PM2 processes
     run_pm2 delete "$MAIN_PROCESS" 2>/dev/null || true
     run_pm2 delete "astrowax-admin" 2>/dev/null || true
     run_pm2 delete "astrowax-panel" 2>/dev/null || true
 
-    # Stop and remove Docker containers
     local DOCKER_CLI=$(get_docker_cmd)
     $DOCKER_CLI rm -f "astrowax-main" 2>/dev/null || true
     $DOCKER_CLI rm -f "astrowax-admin" 2>/dev/null || true
 
     log_success "Services stopped."
 
-    # Ask about data
     echo ""
     if [ -t 0 ]; then
         read -p "    Also delete panel files and user data? (y/N): " DELETE_DATA
@@ -1015,7 +930,6 @@ uninstall_panel() {
     if [ "$DELETE_DATA" = "y" ] || [ "$DELETE_DATA" = "Y" ]; then
         log_step "Removing panel files..."
 
-        # Find and remove panel directory
         local PANEL_PATH=""
         if [ -f "package.json" ] && [ -d "src" ]; then
             PANEL_PATH="$(pwd)"
@@ -1024,15 +938,11 @@ uninstall_panel() {
         fi
 
         if [ -n "$PANEL_PATH" ]; then
-            # Go up one level if we're inside panel dir
             cd "$(dirname "$PANEL_PATH")" 2>/dev/null || true
             rm -rf "$(basename "$PANEL_PATH")" 2>/dev/null || true
         fi
 
-        # Remove whole panel folder if it exists
         rm -rf "$WORK_DIR_NAME" 2>/dev/null || true
-
-        # Remove V1.0 legacy install
         rm -rf ~/AstroWax-Panel 2>/dev/null || true
         rm -rf ~/WaxDaemon 2>/dev/null || true
 
@@ -1093,16 +1003,15 @@ while true; do
     echo -e "    ║                                                           ║"
     echo -e "    ║    ${LIGHT_PURPLE}[1]${NC} ${WHITE}Install AstroWax Panel${NC}                            ║"
     echo -e "    ║    ${LIGHT_PURPLE}[2]${NC} ${WHITE}Update AstroWax Panel${NC}                             ║"
-    echo -e "    ║    ${LIGHT_PURPLE}[3]${NC} ${WHITE}Create Owner Account${NC}                              ║"
-    echo -e "    ║    ${LIGHT_PURPLE}[4]${NC} ${WHITE}Uninstall AstroWax Panel${NC}                          ║"
-    echo -e "    ║    ${LIGHT_PURPLE}[5]${NC} ${WHITE}Exit${NC}                                              ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[3]${NC} ${WHITE}Uninstall AstroWax Panel${NC}                          ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[4]${NC} ${WHITE}Exit${NC}                                              ║"
     echo -e "    ║                                                           ║"
     echo -e "    ${PURPLE}${BOLD}╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "    ${GREY}AstroWax Panel  •  Made by ${LIGHT_PURPLE}Itzytansh${NC}"
     echo ""
 
-    if ! read -p "    Choose (1-5): " CHOICE; then
+    if ! read -p "    Choose (1-4): " CHOICE; then
         echo ""
         break
     fi
@@ -1123,14 +1032,10 @@ while true; do
             if [ -t 0 ]; then read -p "    Press Enter to return to menu..." || true; fi
             ;;
         3)
-            create_owner_user
-            if [ -t 0 ]; then read -p "    Press Enter to return to menu..." || true; fi
-            ;;
-        4)
             uninstall_panel
             if [ -t 0 ]; then read -p "    Press Enter to return to menu..." || true; fi
             ;;
-        5)
+        4)
             echo ""
             echo -e "    ${LIGHT_PURPLE}Goodbye! 👋${NC}"
             echo ""
