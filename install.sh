@@ -42,11 +42,8 @@ V1_DAEMON_REPO="${ASTROWAX_V1_DAEMON_REPO:-WaxDaemon}"
 WORK_DIR_NAME="panel"
 PANEL_DIR_NAME="astrowax-panel"
 MAIN_PROCESS="astrowax-main"
-DEV_PROCESS="astrowax-admin"
 MAIN_CONTAINER="astrowax-main"
-DEV_CONTAINER="astrowax-admin"
 MAIN_PORT="6767"
-DEV_PORT="3000"
 SFTP_PORT="6868"
 
 SELECTED_VERSION=""
@@ -101,6 +98,8 @@ choose_version() {
     echo -e "    ║        ${GREY}Classic build • Node 20 + SQLite${NC}                    ║"
     echo -e "    ║        ${GREY}Includes Panel + Node Daemon${NC}                       ║"
     echo -e "    ║                                                           ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[3]${NC} ${WHITE}Back${NC}                                              ║"
+    echo -e "    ║                                                           ║"
     echo -e "${PURPLE}${BOLD}    ╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
@@ -109,7 +108,7 @@ choose_version() {
     elif [ ! -t 0 ]; then
         vc="1"
     else
-        read -p "    Choose version (1-2): " vc
+        read -p "    Choose version (1-3): " vc
     fi
 
     case "$vc" in
@@ -121,13 +120,18 @@ choose_version() {
             SELECTED_VERSION="1.0"
             log_success "Selected: AstroWax Panel V1.0 (Legacy)"
             ;;
+        3)
+            SELECTED_VERSION=""
+            return 1
+            ;;
         *)
             log_error "Invalid selection."
-            exit 1
+            return 1
             ;;
     esac
     echo ""
     sleep 1
+    return 0
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -152,17 +156,6 @@ get_docker_cmd() {
         echo "sudo docker"
     else
         echo "docker"
-    fi
-}
-
-get_compose_cmd() {
-    local d_cmd=$(get_docker_cmd)
-    if $d_cmd compose version > /dev/null 2>&1; then
-        echo "$d_cmd compose"
-    elif command -v docker-compose > /dev/null 2>&1; then
-        echo "docker-compose"
-    else
-        echo "$d_cmd compose"
     fi
 }
 
@@ -241,6 +234,7 @@ check_system_deps() {
         fi
     fi
 
+    # Swap if low memory
     local total_mem=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}' || echo "2048")
     local total_swap=$(free -m 2>/dev/null | awk '/^Swap:/{print $2}' || echo "0")
     if [ -n "$total_mem" ] && [ "$total_mem" -lt 2000 ] && [ "$total_swap" -lt 512 ]; then
@@ -270,16 +264,14 @@ check_system_deps() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# DOWNLOAD V1.80 — FIXED (no double nesting)
+# DOWNLOAD V1.80 — Fixed extraction (no double nesting)
 # ═══════════════════════════════════════════════════════════
 download_panel_v180() {
     local archive_url="https://github.com/${GH_USER}/${GH_REPO}/raw/${GH_BRANCH}/${GH_ARCHIVE}"
     local main_archive_url="https://github.com/${GH_USER}/${GH_REPO}/archive/refs/heads/${GH_BRANCH}.zip"
 
-    # Clean any old state
     rm -rf "$WORK_DIR_NAME" "$GH_ARCHIVE" 2>/dev/null || true
 
-    # Download panel.zip
     if curl -fsSL "$archive_url" -o "$GH_ARCHIVE" 2>/dev/null; then
         :
     else
@@ -293,12 +285,11 @@ download_panel_v180() {
 
     if [ ! -f "$GH_ARCHIVE" ]; then return 1; fi
 
-    # ✅ Extract WITHOUT -d — the zip contains panel/astrowax-panel/ internally
+    # ✅ Extract WITHOUT -d
     unzip -q -o "$GH_ARCHIVE" 2>/dev/null || return 1
     rm -f "$GH_ARCHIVE" 2>/dev/null || true
 
-    # The result should now be: ./panel/astrowax-panel/
-    # Fallback: if structure differs, auto-detect and flatten
+    # Auto-detect package.json
     if [ ! -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
         local found_pkg=$(find "$WORK_DIR_NAME" -maxdepth 4 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | head -1)
         if [ -n "$found_pkg" ]; then
@@ -311,10 +302,6 @@ download_panel_v180() {
     fi
 
     if [ ! -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
-        echo "Extraction structure unexpected."
-        echo "Contents of $WORK_DIR_NAME:"
-        ls -la "$WORK_DIR_NAME" 2>/dev/null || true
-        find "$WORK_DIR_NAME" -maxdepth 3 -type d 2>/dev/null
         return 1
     fi
     return 0
@@ -350,17 +337,6 @@ install_docker() {
                 echo "Docker daemon not accessible."; return 1
             fi
         fi
-    fi
-
-    local d_cmd=$(get_docker_cmd)
-    if ! $d_cmd compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
-        sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose > /dev/null 2>&1 || true
-        sudo chmod +x /usr/local/bin/docker-compose > /dev/null 2>&1 || true
-    fi
-
-    local c_cmd=$(get_compose_cmd)
-    if ! $c_cmd version &> /dev/null; then
-        echo "Docker Compose not available."; return 1
     fi
     return 0
 }
@@ -491,22 +467,6 @@ module.exports = {
         ENABLE_DOCKER: "${ENABLE_DOCKER}",
         DOCKER_SOCKET_PATH: "/var/run/docker.sock"
       }
-    },
-    {
-      name: "${DEV_PROCESS}",
-      script: "npm",
-      args: "run dev",
-      instances: 1,
-      autorestart: true,
-      watch: false,
-      max_memory_restart: "2G",
-      env: {
-        NODE_ENV: "development",
-        PORT: ${DEV_PORT},
-        DEFAULT_RUNTIME: "${DEFAULT_RT}",
-        ENABLE_DOCKER: "${ENABLE_DOCKER}",
-        DOCKER_SOCKET_PATH: "/var/run/docker.sock"
-      }
     }
   ]
 };
@@ -544,9 +504,8 @@ build_application() {
 stop_panel() {
     log_step "Stopping running panels..."
     run_pm2 delete "$MAIN_PROCESS" 2>/dev/null || true
-    run_pm2 delete "$DEV_PROCESS" 2>/dev/null || true
     local DOCKER_CLI=$(get_docker_cmd)
-    $DOCKER_CLI rm -f $MAIN_CONTAINER $DEV_CONTAINER 2>/dev/null || true
+    $DOCKER_CLI rm -f $MAIN_CONTAINER 2>/dev/null || true
     log_success "Stopped."
 }
 
@@ -610,11 +569,10 @@ health_check() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# STATUS
+# STATUS — CLEAN: NO DEV PANEL LINE
 # ═══════════════════════════════════════════════════════════
 show_status() {
     local MAIN_STATUS="OFF"
-    local DEV_STATUS="OFF"
     local SFTP_STATUS="OFF"
     local VERSION_LABEL="${SELECTED_VERSION:-1.80}"
 
@@ -623,12 +581,7 @@ show_status() {
         MAIN_STATUS="ONLINE"
     fi
 
-    if (run_pm2 list 2>/dev/null | grep "$DEV_PROCESS" | grep -q "online") || \
-       curl -s -m 2 http://127.0.0.1:${DEV_PORT}/api/health 2>/dev/null | grep -qi "astrowax"; then
-        DEV_STATUS="ONLINE"
-    fi
-
-    if [ "$MAIN_STATUS" = "ONLINE" ] || [ "$DEV_STATUS" = "ONLINE" ]; then
+    if [ "$MAIN_STATUS" = "ONLINE" ]; then
         SFTP_STATUS="ONLINE"
     fi
 
@@ -648,13 +601,6 @@ show_status() {
         echo -e "    ║  ${WHITE}Main Panel${PURPLE}       : ${RED}○ OFFLINE${PURPLE}                         ║"
     fi
     echo -e "    ║                                                           ║"
-    if [ "$DEV_STATUS" = "ONLINE" ]; then
-        echo -e "    ║  ${WHITE}Developer Panel${PURPLE}  : ${GREEN}● ONLINE${PURPLE}                          ║"
-        echo -e "    ║                     ${LIGHT_PURPLE}http://${IP}:${DEV_PORT}${PURPLE}           ║"
-    else
-        echo -e "    ║  ${WHITE}Developer Panel${PURPLE}  : ${YELLOW}○ OFFLINE${PURPLE}                         ║"
-    fi
-    echo -e "    ║                                                           ║"
     if [ "$SFTP_STATUS" = "ONLINE" ]; then
         echo -e "    ║  ${WHITE}SFTP Service${PURPLE}     : ${GREEN}● ONLINE${PURPLE}  (Port ${SFTP_PORT})            ║"
     else
@@ -666,11 +612,9 @@ show_status() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# INSTALL — V1.80
+# INSTALL V1.80
 # ═══════════════════════════════════════════════════════════
 install_panel_v180() {
-    local TARGET=$1
-
     print_banner
 
     local PANEL_PATH=""
@@ -690,7 +634,6 @@ install_panel_v180() {
             PANEL_PATH="$WORK_DIR_NAME/$PANEL_DIR_NAME"
         else
             log_error "Panel not found after download."
-            log_info "Checking for extracted files..."
             find . -maxdepth 4 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null
             exit 1
         fi
@@ -710,6 +653,8 @@ install_panel_v180() {
     echo -e "    ║    ${LIGHT_PURPLE}[2]${NC} ${WHITE}Pure Local Node.js${NC}                                ║"
     echo -e "    ║        ${GREY}Node.js/Local for Minecraft servers${NC}                ║"
     echo -e "    ║                                                           ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[3]${NC} ${WHITE}Back${NC}                                              ║"
+    echo -e "    ║                                                           ║"
     echo -e "${PURPLE}${BOLD}    ╚═══════════════════════════════════════════════════════════╝${NC}"
 
     local MODE_CHOICE=""
@@ -718,54 +663,56 @@ install_panel_v180() {
     elif [ ! -t 0 ]; then
         MODE_CHOICE="1"
     else
-        read -p "    Choose (1-2): " MODE_CHOICE
+        read -p "    Choose (1-3): " MODE_CHOICE
+    fi
+
+    if [ "$MODE_CHOICE" = "3" ]; then
+        return 1
     fi
 
     if [ "$MODE_CHOICE" != "1" ] && [ "$MODE_CHOICE" != "2" ]; then
-        log_error "Invalid selection."; exit 1
+        log_error "Invalid selection."; return 1
     fi
 
-    if [ "$TARGET" = "main" ]; then
-        print_banner
-        echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
-        echo -e "    ║              ${WHITE}CREATE OWNER ACCOUNT${PURPLE}                       ║"
-        echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
-        echo ""
+    print_banner
+    echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
+    echo -e "    ║              ${WHITE}CREATE OWNER ACCOUNT${PURPLE}                       ║"
+    echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
 
-        local OWNER_USER=""
-        local OWNER_PASS=""
-        local OWNER_PASS2=""
+    local OWNER_USER=""
+    local OWNER_PASS=""
+    local OWNER_PASS2=""
 
-        if [ -n "$ASTROWAX_OWNER_USER" ] && [ -n "$ASTROWAX_OWNER_PASS" ]; then
-            OWNER_USER="$ASTROWAX_OWNER_USER"
-            OWNER_PASS="$ASTROWAX_OWNER_PASS"
-        elif [ ! -t 0 ]; then
-            OWNER_USER="owner"
-            OWNER_PASS="owner12345"
-        else
-            while true; do
-                read -p "    Username: " OWNER_USER
-                if [ ${#OWNER_USER} -ge 3 ]; then break; fi
-                echo "    Username must be at least 3 characters."
-            done
-            while true; do
-                read -s -p "    Password: " OWNER_PASS
-                echo ""
-                read -s -p "    Confirm Password: " OWNER_PASS2
-                echo ""
-                if [ ${#OWNER_PASS} -lt 6 ]; then
-                    echo "    Password must be at least 6 characters."
-                elif [ "$OWNER_PASS" = "$OWNER_PASS2" ] && [ -n "$OWNER_PASS" ]; then
-                    break
-                else
-                    echo "    Passwords do not match."
-                fi
-            done
-        fi
-
-        export ASTROWAX_OWNER_USER="$OWNER_USER"
-        export ASTROWAX_OWNER_PASS="$OWNER_PASS"
+    if [ -n "$ASTROWAX_OWNER_USER" ] && [ -n "$ASTROWAX_OWNER_PASS" ]; then
+        OWNER_USER="$ASTROWAX_OWNER_USER"
+        OWNER_PASS="$ASTROWAX_OWNER_PASS"
+    elif [ ! -t 0 ]; then
+        OWNER_USER="owner"
+        OWNER_PASS="owner12345"
+    else
+        while true; do
+            read -p "    Username: " OWNER_USER
+            if [ ${#OWNER_USER} -ge 3 ]; then break; fi
+            echo "    Username must be at least 3 characters."
+        done
+        while true; do
+            read -s -p "    Password: " OWNER_PASS
+            echo ""
+            read -s -p "    Confirm Password: " OWNER_PASS2
+            echo ""
+            if [ ${#OWNER_PASS} -lt 6 ]; then
+                echo "    Password must be at least 6 characters."
+            elif [ "$OWNER_PASS" = "$OWNER_PASS2" ] && [ -n "$OWNER_PASS" ]; then
+                break
+            else
+                echo "    Passwords do not match."
+            fi
+        done
     fi
+
+    export ASTROWAX_OWNER_USER="$OWNER_USER"
+    export ASTROWAX_OWNER_PASS="$OWNER_PASS"
 
     mkdir -p .data backups
     if [ ! -f ".env" ]; then
@@ -793,17 +740,10 @@ install_panel_v180() {
 
     execute_step "Node.js Configuration" setup_node_env "$RUNTIME_ARG"
     execute_step "NPM Dependencies" install_dependencies
-
-    if [ "$TARGET" = "main" ]; then
-        execute_step "Owner Account Setup" setup_owner
-        execute_step "Building Application" build_application
-        execute_step "Starting PM2 Service" start_panel_node "$MAIN_PROCESS"
-        execute_step "Health Check" health_check $MAIN_PORT pm2 "$MAIN_PROCESS"
-    else
-        execute_step "Building Application" build_application
-        execute_step "Starting PM2 Service" start_panel_node "$DEV_PROCESS"
-        execute_step "Health Check" health_check $DEV_PORT pm2 "$DEV_PROCESS"
-    fi
+    execute_step "Owner Account Setup" setup_owner
+    execute_step "Building Application" build_application
+    execute_step "Starting PM2 Service" start_panel_node "$MAIN_PROCESS"
+    execute_step "Health Check" health_check $MAIN_PORT pm2 "$MAIN_PROCESS"
 
     show_status
 
@@ -813,22 +753,16 @@ install_panel_v180() {
     echo -e "    ║              ${WHITE}INSTALLATION COMPLETE${GREEN}                       ║"
     echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
-
-    if [ "$TARGET" = "main" ]; then
-        echo -e "    ${WHITE}Panel URL${NC}  : ${LIGHT_PURPLE}http://${IP}:${MAIN_PORT}${NC}"
-        echo -e "    ${WHITE}Username${NC}   : ${LIGHT_PURPLE}${OWNER_USER}${NC}"
-        echo -e "    ${WHITE}Version${NC}    : ${LIGHT_PURPLE}AstroWax Panel V1.80${NC}"
-        echo ""
-        echo -e "    ${GREY}Made by ${LIGHT_PURPLE}Itzytansh${NC}"
-    else
-        echo -e "    ${WHITE}Dev URL${NC}    : ${LIGHT_PURPLE}http://${IP}:${DEV_PORT}${NC}"
-        echo -e "    ${WHITE}Version${NC}    : ${LIGHT_PURPLE}AstroWax Panel V1.80${NC}"
-    fi
+    echo -e "    ${WHITE}Panel URL${NC}  : ${LIGHT_PURPLE}http://${IP}:${MAIN_PORT}${NC}"
+    echo -e "    ${WHITE}Username${NC}   : ${LIGHT_PURPLE}${OWNER_USER}${NC}"
+    echo -e "    ${WHITE}Version${NC}    : ${LIGHT_PURPLE}AstroWax Panel V1.80${NC}"
+    echo ""
+    echo -e "    ${GREY}Made by ${LIGHT_PURPLE}Itzytansh${NC}"
     echo ""
 }
 
 # ═══════════════════════════════════════════════════════════
-# INSTALL — V1.0 (Panel + Node Daemon)
+# INSTALL V1.0 (Legacy)
 # ═══════════════════════════════════════════════════════════
 install_panel_v10() {
     print_banner
@@ -838,18 +772,13 @@ install_panel_v10() {
     echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
-    # ─── Ask what to install ───
     echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
     echo -e "    ║              ${WHITE}V1.0 INSTALL OPTIONS${PURPLE}                       ║"
     echo -e "    ╠═══════════════════════════════════════════════════════════╣${NC}"
     echo -e "    ║                                                           ║"
     echo -e "    ║    ${LIGHT_PURPLE}[1]${NC} ${WHITE}Install Panel only${NC}                                ║"
-    echo -e "    ║                                                           ║"
     echo -e "    ║    ${LIGHT_PURPLE}[2]${NC} ${WHITE}Install Node Daemon only${NC}                          ║"
-    echo -e "    ║                                                           ║"
     echo -e "    ║    ${LIGHT_PURPLE}[3]${NC} ${WHITE}Install BOTH (Panel + Node Daemon)${NC}                ║"
-    echo -e "    ║        ${GREY}Recommended for full setup${NC}                          ║"
-    echo -e "    ║                                                           ║"
     echo -e "    ║    ${LIGHT_PURPLE}[4]${NC} ${WHITE}Back${NC}                                              ║"
     echo -e "    ║                                                           ║"
     echo -e "${PURPLE}${BOLD}    ╚═══════════════════════════════════════════════════════════╝${NC}"
@@ -864,28 +793,14 @@ install_panel_v10() {
     fi
 
     case "$V1_CHOICE" in
-        1)
-            install_v10_panel
-            ;;
-        2)
-            install_v10_node_daemon
-            ;;
-        3)
-            install_v10_panel
-            echo ""
-            install_v10_node_daemon
-            ;;
-        4)
-            return
-            ;;
-        *)
-            log_error "Invalid selection."
-            return
-            ;;
+        1) install_v10_panel ;;
+        2) install_v10_node_daemon ;;
+        3) install_v10_panel; echo ""; install_v10_node_daemon ;;
+        4) return 0 ;;
+        *) log_error "Invalid selection."; return 1 ;;
     esac
 }
 
-# ─── V1.0 PANEL ───
 install_v10_panel() {
     echo ""
     log_step "Installing AstroWax Panel V1.0..."
@@ -901,7 +816,6 @@ install_v10_panel() {
     echo ""
 }
 
-# ─── V1.0 NODE DAEMON ───
 install_v10_node_daemon() {
     echo ""
     log_step "Installing AstroWax Node Daemon (V1.0)..."
@@ -921,7 +835,7 @@ install_v10_node_daemon() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# UPDATE PANEL
+# UPDATE
 # ═══════════════════════════════════════════════════════════
 update_panel() {
     print_banner
@@ -936,11 +850,10 @@ update_panel() {
     elif [ -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
         PANEL_PATH="$WORK_DIR_NAME/$PANEL_DIR_NAME"
     else
-        log_error "Panel not installed. Please run install first."
-        return 1
+        log_error "Panel not installed."; return 1
     fi
 
-    cd "$PANEL_PATH" || { log_error "Cannot enter panel dir."; return 1; }
+    cd "$PANEL_PATH" || return 1
     log_info "Updating from: $(pwd)"
     echo ""
 
@@ -948,121 +861,33 @@ update_panel() {
     local main_archive_url="https://github.com/${GH_USER}/${GH_REPO}/archive/refs/heads/${GH_BRANCH}.zip"
     local temp_dir="/tmp/awp_update_$$"
     local new_dir="${temp_dir}/new"
-    local old_dir="${temp_dir}/old"
 
-    mkdir -p "$new_dir" "$old_dir" || return 1
+    mkdir -p "$new_dir" || return 1
 
-    local downloaded=0
-    if curl -fsSL "$archive_url" -o "/tmp/awp_update.zip" 2>/dev/null; then
-        downloaded=1
-    else
+    if ! curl -fsSL "$archive_url" -o "/tmp/awp_update.zip" 2>/dev/null; then
         curl -fsSL "$main_archive_url" -o "/tmp/${GH_REPO}_update.zip" 2>/dev/null || {
-            log_error "Failed to download update."
-            rm -rf "$temp_dir"; return 1
-        }
+            log_error "Failed to download."; rm -rf "$temp_dir"; return 1; }
         unzip -q -o "/tmp/${GH_REPO}_update.zip" -d "/tmp/awp_update_extract" 2>/dev/null || {
-            log_error "Failed to extract."
-            rm -rf "$temp_dir" "/tmp/${GH_REPO}_update.zip" "/tmp/awp_update_extract"; return 1
-        }
+            log_error "Failed to extract."; rm -rf "$temp_dir" "/tmp/${GH_REPO}_update.zip" "/tmp/awp_update_extract"; return 1; }
         local found=$(find /tmp/awp_update_extract -name "$GH_ARCHIVE" -type f 2>/dev/null | head -1)
         if [ -z "$found" ]; then
-            log_error "panel.zip not found in repo."
+            log_error "panel.zip not found."
             rm -rf "$temp_dir" "/tmp/${GH_REPO}_update.zip" "/tmp/awp_update_extract"; return 1
         fi
         cp "$found" "/tmp/awp_update.zip" 2>/dev/null
         rm -rf "/tmp/${GH_REPO}_update.zip" "/tmp/awp_update_extract"
-        downloaded=1
     fi
 
-    if [ "$downloaded" -ne 1 ] || [ ! -f "/tmp/awp_update.zip" ]; then
-        log_error "Download failed."
-        rm -rf "$temp_dir"; return 1
-    fi
-
-    # Extract new
     unzip -q -o "/tmp/awp_update.zip" -d "$new_dir" 2>/dev/null || {
-        log_error "Failed to extract new panel.zip"
-        rm -rf "$temp_dir" "/tmp/awp_update.zip"; return 1
-    }
+        log_error "Extract failed."; rm -rf "$temp_dir" "/tmp/awp_update.zip"; return 1; }
 
-    # Auto-detect new root
     local actual_new_root="$new_dir"
     if [ -d "$new_dir/$WORK_DIR_NAME/$PANEL_DIR_NAME" ]; then
         actual_new_root="$new_dir/$WORK_DIR_NAME/$PANEL_DIR_NAME"
     elif [ -d "$new_dir/$PANEL_DIR_NAME" ]; then
         actual_new_root="$new_dir/$PANEL_DIR_NAME"
-    else
-        local found_pkg=$(find "$new_dir" -maxdepth 4 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | head -1)
-        if [ -n "$found_pkg" ]; then
-            actual_new_root=$(dirname "$found_pkg")
-        fi
     fi
 
-    # Copy current for comparison
-    cp -r "$(pwd)" "$old_dir/" 2>/dev/null
-    local actual_old_root="$old_dir/$(basename "$(pwd)")"
-
-    log_step "Comparing files..."
-    local changed_files=""
-    local new_files=""
-    local identical=1
-
-    while IFS= read -r newfile; do
-        local relpath="${newfile#$actual_new_root/}"
-        local oldfile="$actual_old_root/$relpath"
-
-        case "$relpath" in
-            node_modules/*|dist/*|.git/*|.data/*|backups/*|*.log) continue ;;
-        esac
-
-        if [ ! -f "$oldfile" ]; then
-            new_files="$new_files$relpath\n"
-            identical=0
-        elif ! cmp -s "$newfile" "$oldfile"; then
-            changed_files="$changed_files$relpath\n"
-            identical=0
-        fi
-    done < <(find "$actual_new_root" -type f 2>/dev/null)
-
-    echo ""
-    if [ "$identical" -eq 1 ]; then
-        echo -e "${GREEN}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
-        echo -e "    ║                                                           ║"
-        echo -e "    ║          ${WHITE}✓ ALREADY ON LATEST VERSION${GREEN}                    ║"
-        echo -e "    ║                                                           ║"
-        echo -e "    ║          ${GREY}No changes detected — you're up to date!${GREEN}         ║"
-        echo -e "    ║                                                           ║"
-        echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
-        echo ""
-        rm -rf "$temp_dir" "/tmp/awp_update.zip"
-        return 0
-    fi
-
-    if [ -n "$changed_files" ]; then
-        echo -e "${YELLOW}${BOLD}    Changed files:${NC}"
-        echo -e "$changed_files" | while read -r f; do
-            [ -n "$f" ] && echo -e "    ${LIGHT_PURPLE}~${NC} $f"
-        done
-        echo ""
-    fi
-    if [ -n "$new_files" ]; then
-        echo -e "${GREEN}${BOLD}    New files:${NC}"
-        echo -e "$new_files" | while read -r f; do
-            [ -n "$f" ] && echo -e "    ${GREEN}+${NC} $f"
-        done
-        echo ""
-    fi
-
-    if [ -t 0 ]; then
-        read -p "    ${WHITE}Apply update? (y/N):${NC} " CONFIRM
-        if [ "$CONFIRM" != "y" ] && [ "$CONFIRM" != "Y" ]; then
-            echo -e "    ${YELLOW}Update cancelled.${NC}"
-            rm -rf "$temp_dir" "/tmp/awp_update.zip"
-            return 0
-        fi
-    fi
-
-    echo ""
     stop_panel
     echo ""
 
@@ -1099,14 +924,10 @@ update_panel() {
 
     echo ""
     echo -e "${GREEN}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
-    echo -e "    ║                                                           ║"
     echo -e "    ║          ${WHITE}✓ UPDATE COMPLETE${GREEN}                              ║"
-    echo -e "    ║                                                           ║"
     echo -e "    ║          ${GREY}Backup: ${WHITE}$BACKUP_NAME.tar.gz${NC}${GREEN}                  ║"
-    echo -e "    ║                                                           ║"
     echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
-
     show_status
 }
 
@@ -1148,12 +969,87 @@ create_owner_user() {
     log_success "Owner user created!"
 }
 
+# ═══════════════════════════════════════════════════════════
+# UNINSTALL — AstroWax Panel (was JTG Panel)
+# ═══════════════════════════════════════════════════════════
 uninstall_panel() {
-    if [ ! -f "uninstall.sh" ]; then
-        log_error "uninstall.sh not found."
-        return
+    print_banner
+    echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
+    echo -e "    ║              ${WHITE}UNINSTALL ASTROWAX PANEL${PURPLE}                   ║"
+    echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${RED}${BOLD}    ⚠ This will remove AstroWax Panel from this system.${NC}"
+    echo ""
+
+    if [ -t 0 ]; then
+        read -p "    Are you sure? Type 'yes' to confirm: " CONFIRM
+        if [ "$CONFIRM" != "yes" ]; then
+            echo -e "    ${YELLOW}Uninstall cancelled.${NC}"
+            return 0
+        fi
     fi
-    bash uninstall.sh
+
+    echo ""
+    log_step "Stopping AstroWax services..."
+
+    # Stop PM2 processes
+    run_pm2 delete "$MAIN_PROCESS" 2>/dev/null || true
+    run_pm2 delete "astrowax-admin" 2>/dev/null || true
+    run_pm2 delete "astrowax-panel" 2>/dev/null || true
+
+    # Stop and remove Docker containers
+    local DOCKER_CLI=$(get_docker_cmd)
+    $DOCKER_CLI rm -f "astrowax-main" 2>/dev/null || true
+    $DOCKER_CLI rm -f "astrowax-admin" 2>/dev/null || true
+
+    log_success "Services stopped."
+
+    # Ask about data
+    echo ""
+    if [ -t 0 ]; then
+        read -p "    Also delete panel files and user data? (y/N): " DELETE_DATA
+    else
+        DELETE_DATA="n"
+    fi
+
+    if [ "$DELETE_DATA" = "y" ] || [ "$DELETE_DATA" = "Y" ]; then
+        log_step "Removing panel files..."
+
+        # Find and remove panel directory
+        local PANEL_PATH=""
+        if [ -f "package.json" ] && [ -d "src" ]; then
+            PANEL_PATH="$(pwd)"
+        elif [ -d "$WORK_DIR_NAME/$PANEL_DIR_NAME" ]; then
+            PANEL_PATH="$(pwd)/$WORK_DIR_NAME/$PANEL_DIR_NAME"
+        fi
+
+        if [ -n "$PANEL_PATH" ]; then
+            # Go up one level if we're inside panel dir
+            cd "$(dirname "$PANEL_PATH")" 2>/dev/null || true
+            rm -rf "$(basename "$PANEL_PATH")" 2>/dev/null || true
+        fi
+
+        # Remove whole panel folder if it exists
+        rm -rf "$WORK_DIR_NAME" 2>/dev/null || true
+
+        # Remove V1.0 legacy install
+        rm -rf ~/AstroWax-Panel 2>/dev/null || true
+        rm -rf ~/WaxDaemon 2>/dev/null || true
+
+        log_success "Panel files removed."
+    else
+        log_info "Panel files kept at: $(pwd)"
+    fi
+
+    echo ""
+    echo -e "${GREEN}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
+    echo -e "    ║                                                           ║"
+    echo -e "    ║          ${WHITE}✓ UNINSTALL COMPLETE${GREEN}                          ║"
+    echo -e "    ║                                                           ║"
+    echo -e "    ║          ${GREY}AstroWax Panel has been removed.${GREEN}               ║"
+    echo -e "    ║                                                           ║"
+    echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -1169,24 +1065,20 @@ for arg in "$@"; do
     esac
 done
 
-if [ "$1" = "main" ]; then
-    choose_version
-    if [ "$SELECTED_VERSION" = "1.0" ]; then
-        install_panel_v10
-    else
-        install_panel_v180 "main"
-    fi
-    exit 0
-elif [ "$1" = "dev" ]; then
-    choose_version
-    if [ "$SELECTED_VERSION" = "1.0" ]; then
-        install_panel_v10
-    else
-        install_panel_v180 "dev"
+if [ "$1" = "install" ] || [ "$1" = "main" ]; then
+    if choose_version; then
+        if [ "$SELECTED_VERSION" = "1.0" ]; then
+            install_panel_v10
+        else
+            install_panel_v180
+        fi
     fi
     exit 0
 elif [ "$1" = "update" ]; then
     update_panel
+    exit 0
+elif [ "$1" = "uninstall" ]; then
+    uninstall_panel
     exit 0
 fi
 
@@ -1199,10 +1091,10 @@ while true; do
     echo -e "    ║              ${WHITE}SELECT AN OPTION${PURPLE}                            ║"
     echo -e "    ╠═══════════════════════════════════════════════════════════╣${NC}"
     echo -e "    ║                                                           ║"
-    echo -e "    ║    ${LIGHT_PURPLE}[1]${NC} ${WHITE}Install Panel${NC}                                     ║"
-    echo -e "    ║    ${LIGHT_PURPLE}[2]${NC} ${WHITE}Update Panel${NC}                                      ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[1]${NC} ${WHITE}Install AstroWax Panel${NC}                            ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[2]${NC} ${WHITE}Update AstroWax Panel${NC}                             ║"
     echo -e "    ║    ${LIGHT_PURPLE}[3]${NC} ${WHITE}Create Owner Account${NC}                              ║"
-    echo -e "    ║    ${LIGHT_PURPLE}[4]${NC} ${WHITE}Uninstall Panel${NC}                                   ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[4]${NC} ${WHITE}Uninstall AstroWax Panel${NC}                          ║"
     echo -e "    ║    ${LIGHT_PURPLE}[5]${NC} ${WHITE}Exit${NC}                                              ║"
     echo -e "    ║                                                           ║"
     echo -e "    ${PURPLE}${BOLD}╚═══════════════════════════════════════════════════════════╝${NC}"
@@ -1217,11 +1109,12 @@ while true; do
 
     case "$CHOICE" in
         1)
-            choose_version
-            if [ "$SELECTED_VERSION" = "1.0" ]; then
-                install_panel_v10
-            else
-                install_panel_v180 "main"
+            if choose_version; then
+                if [ "$SELECTED_VERSION" = "1.0" ]; then
+                    install_panel_v10
+                else
+                    install_panel_v180
+                fi
             fi
             if [ -t 0 ]; then read -p "    Press Enter to return to menu..." || true; fi
             ;;
