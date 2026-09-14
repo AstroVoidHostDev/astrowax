@@ -1,6 +1,6 @@
 #!/bin/bash
 # =========================================================
-# AstroWax Panel Installer
+# AstroWax Panel — Master Control Script
 # Made by Itzytansh
 # =========================================================
 
@@ -44,13 +44,10 @@ MAIN_CONTAINER="astrowax-main"
 MAIN_PORT="6767"
 SFTP_PORT="6868"
 
-# ✅ Force Node 20 LTS (avoids Node 24 MODULE_NOT_FOUND bug)
-NODE_VERSION="20"
-
 SELECTED_VERSION=""
 
 # ═══════════════════════════════════════════════════════════
-# ASCII BANNER
+# BANNER
 # ═══════════════════════════════════════════════════════════
 print_banner() {
     if [ -t 1 ]; then clear 2>/dev/null || true; fi
@@ -80,47 +77,6 @@ log_error()   { echo -e "${RED}[✗]${NC} $1"; }
 log_step()    { echo -e "${PURPLE}${BOLD}[→]${NC} $1"; }
 
 # ═══════════════════════════════════════════════════════════
-# VERSION SELECTOR
-# ═══════════════════════════════════════════════════════════
-choose_version() {
-    print_banner
-    echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
-    echo -e "    ║              ${WHITE}SELECT PANEL VERSION${PURPLE}                        ║"
-    echo -e "    ╠═══════════════════════════════════════════════════════════╣${NC}"
-    echo -e "    ║                                                           ║"
-    echo -e "    ║    ${LIGHT_PURPLE}[1]${NC} ${WHITE}AstroWax Panel V1.80${NC}                              ║"
-    echo -e "    ║        ${GREY}Latest • Modern build system${NC}                        ║"
-    echo -e "    ║        ${GREY}Node 20 + PM2 + Docker${NC}                             ║"
-    echo -e "    ║                                                           ║"
-    echo -e "    ║    ${LIGHT_PURPLE}[2]${NC} ${WHITE}AstroWax Panel V1.0 (Legacy)${NC}                      ║"
-    echo -e "    ║        ${GREY}Classic build • Node 20 + SQLite${NC}                    ║"
-    echo -e "    ║        ${GREY}Includes Panel + Node Daemon${NC}                       ║"
-    echo -e "    ║                                                           ║"
-    echo -e "    ║    ${LIGHT_PURPLE}[3]${NC} ${WHITE}Back${NC}                                              ║"
-    echo -e "    ║                                                           ║"
-    echo -e "${PURPLE}${BOLD}    ╚═══════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-
-    if [ -n "$VERSION_CHOICE" ]; then
-        local vc="$VERSION_CHOICE"
-    elif [ ! -t 0 ]; then
-        vc="1"
-    else
-        read -p "    Choose version (1-3): " vc
-    fi
-
-    case "$vc" in
-        1) SELECTED_VERSION="1.80"; log_success "Selected: V1.80" ;;
-        2) SELECTED_VERSION="1.0"; log_success "Selected: V1.0 (Legacy)" ;;
-        3) SELECTED_VERSION=""; return 1 ;;
-        *) log_error "Invalid."; return 1 ;;
-    esac
-    echo ""
-    sleep 1
-    return 0
-}
-
-# ═══════════════════════════════════════════════════════════
 # HELPERS
 # ═══════════════════════════════════════════════════════════
 run_pm2() {
@@ -134,6 +90,26 @@ get_docker_cmd() {
     if docker info > /dev/null 2>&1; then echo "docker"
     elif command -v sudo &> /dev/null && sudo docker info > /dev/null 2>&1; then echo "sudo docker"
     else echo "docker"; fi
+}
+
+# ✅ Find panel directory
+find_panel_dir() {
+    if [ -f "package.json" ] && [ -d "src" ]; then
+        echo "$(pwd)"
+        return 0
+    fi
+    if [ -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
+        echo "$(pwd)/$WORK_DIR_NAME/$PANEL_DIR_NAME"
+        return 0
+    fi
+    # Search deeper
+    local found=$(find . -maxdepth 4 -name "package.json" -not -path "*/node_modules/*" -not -path "*/dist/*" 2>/dev/null | head -1)
+    if [ -n "$found" ]; then
+        echo "$(cd "$(dirname "$found")" && pwd)"
+        return 0
+    fi
+    echo ""
+    return 1
 }
 
 execute_step() {
@@ -168,47 +144,46 @@ execute_step() {
     else
         printf "\r  ${RED}✗${NC} %-48s ${RED}[Fail]${NC}\n" "$msg"
         echo -e "\n${RED}════════════════════════════════════════════════════${NC}"
-        echo -e "${RED}${BOLD}  STEP FAILED${NC}"
+        echo -e "${RED}${BOLD}  STEP FAILED: $msg${NC}"
         echo -e "${RED}════════════════════════════════════════════════════${NC}"
-        echo -e "  Step    : ${BOLD}$msg${NC}"
-        echo -e "  Exit    : $status"
+        echo -e "  Exit code: $status"
         echo -e ""
-        echo -e "  ${YELLOW}Output / Reason:${NC}"
+        echo -e "  ${YELLOW}Output:${NC}"
         if [ -s "$log_file" ]; then
-            tail -n 60 "$log_file" | sed 's/^/  /'
+            tail -n 40 "$log_file" | sed 's/^/  /'
         else
             echo "  No output."
         fi
         echo -e "${RED}════════════════════════════════════════════════════${NC}"
-        echo -e "${YELLOW}  Stopped safely.${NC}\n"
-        exit 1
+        return $status
     fi
-    return $status
+    return 0
 }
 
 # ═══════════════════════════════════════════════════════════
 # SYSTEM DEPS
 # ═══════════════════════════════════════════════════════════
 check_system_deps() {
-    local MISSING_DEPS=""
+    local MISSING=""
     for cmd in curl git tar unzip; do
         if ! command -v "$cmd" > /dev/null 2>&1; then
-            MISSING_DEPS="$MISSING_DEPS $cmd"
+            MISSING="$MISSING $cmd"
         fi
     done
 
-    if [ -n "$MISSING_DEPS" ]; then
+    if [ -n "$MISSING" ]; then
         if command -v apt-get > /dev/null 2>&1; then
             sudo apt-get update -y -q > /dev/null 2>&1 || true
-            sudo apt-get install -y $MISSING_DEPS build-essential ca-certificates -q > /dev/null 2>&1 || true
+            sudo apt-get install -y $MISSING build-essential ca-certificates -q > /dev/null 2>&1 || true
         elif command -v yum > /dev/null 2>&1; then
             sudo yum update -y -q > /dev/null 2>&1 || true
-            sudo yum install -y $MISSING_DEPS make gcc-c++ ca-certificates unzip -q > /dev/null 2>&1 || true
+            sudo yum install -y $MISSING make gcc-c++ ca-certificates unzip -q > /dev/null 2>&1 || true
         elif command -v dnf > /dev/null 2>&1; then
-            sudo dnf install -y $MISSING_DEPS make gcc-c++ ca-certificates unzip -q > /dev/null 2>&1 || true
+            sudo dnf install -y $MISSING make gcc-c++ ca-certificates unzip -q > /dev/null 2>&1 || true
         fi
     fi
 
+    # Swap if needed
     local total_mem=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}' || echo "2048")
     local total_swap=$(free -m 2>/dev/null | awk '/^Swap:/{print $2}' || echo "0")
     if [ -n "$total_mem" ] && [ "$total_mem" -lt 2000 ] && [ "$total_swap" -lt 512 ]; then
@@ -221,8 +196,6 @@ check_system_deps() {
                 fi
                 sudo chmod 600 /swapfile > /dev/null 2>&1 || true
                 sudo mkswap /swapfile > /dev/null 2>&1 || true
-                sudo swapon /swapfile > /dev/null 2>&1 || true
-            else
                 sudo swapon /swapfile > /dev/null 2>&1 || true
             fi
         fi
@@ -272,10 +245,7 @@ download_panel_v180() {
         fi
     fi
 
-    if [ ! -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
-        return 1
-    fi
-    return 0
+    [ -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -290,38 +260,18 @@ install_docker() {
             sudo service docker start > /dev/null 2>&1 || true
         fi
     fi
-
-    if ! command -v docker &> /dev/null; then
-        echo "Docker install failed."; return 1
-    fi
-
-    if ! docker info > /dev/null 2>&1; then
-        if command -v systemctl &> /dev/null; then
-            sudo systemctl start docker > /dev/null 2>&1 || true
-        elif command -v service &> /dev/null; then
-            sudo service docker start > /dev/null 2>&1 || true
-        fi
-        if ! docker info > /dev/null 2>&1; then
-            if command -v sudo &> /dev/null && sudo docker info > /dev/null 2>&1; then
-                sudo usermod -aG docker "$USER" 2>/dev/null || true
-            else
-                echo "Docker daemon not accessible."; return 1
-            fi
-        fi
-    fi
-    return 0
+    [ -x "$(command -v docker)" ] && return 0
+    echo "Docker not available."; return 1
 }
 
 # ═══════════════════════════════════════════════════════════
-# NODE — Force version 20 via nvm (fixes Node 24 MODULE_NOT_FOUND bug)
+# NODE 20 (via nvm)
 # ═══════════════════════════════════════════════════════════
 install_node() {
-    # Load nvm if installed
     export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
     [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
     [ -s "/usr/local/share/nvm/nvm.sh" ] && { export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh"; }
 
-    # Install nvm if missing
     if ! command -v nvm >/dev/null 2>&1; then
         curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash > /dev/null 2>&1 || true
         export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
@@ -329,14 +279,12 @@ install_node() {
         [ -s "/usr/local/share/nvm/nvm.sh" ] && { export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh"; }
     fi
 
-    # Install and use Node 20
     if command -v nvm >/dev/null 2>&1; then
         nvm install 20 > /dev/null 2>&1 || true
         nvm use 20 > /dev/null 2>&1 || true
         nvm alias default 20 > /dev/null 2>&1 || true
     fi
 
-    # Fallback to system node if nvm failed
     if ! command -v node &> /dev/null; then
         if command -v apt-get &> /dev/null; then
             curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - > /dev/null 2>&1 || true
@@ -344,21 +292,9 @@ install_node() {
         fi
     fi
 
-    if ! command -v node &> /dev/null; then
-        echo "Node.js install failed."; return 1
-    fi
-
-    local VER=$(node -v 2>/dev/null | tr -d 'v' | cut -d'.' -f1)
-    echo "Node version: $(node -v)"
-
-    # Warn if not 20 but continue
-    if [ "$VER" -gt 22 ]; then
-        echo "⚠ Node $VER detected — using it anyway, but if build fails try 'nvm use 20'"
-    fi
-
-    if ! command -v npm &> /dev/null; then
-        echo "npm missing."; return 1
-    fi
+    command -v node &> /dev/null || { echo "Node install failed"; return 1; }
+    echo "Node: $(node -v)"
+    command -v npm &> /dev/null || { echo "npm missing"; return 1; }
     return 0
 }
 
@@ -369,28 +305,24 @@ install_java() {
     if command -v java > /dev/null 2>&1 && java -version > /dev/null 2>&1; then
         return 0
     fi
-    echo "Installing Java (OpenJDK)..."
+    echo "Installing Java..."
     if command -v apt-get > /dev/null 2>&1; then
         sudo apt-get update -y -q > /dev/null 2>&1 || true
         sudo apt-get install -y -q openjdk-21-jre-headless > /dev/null 2>&1 || \
         sudo apt-get install -y -q openjdk-17-jre-headless > /dev/null 2>&1 || true
-    elif command -v dnf > /dev/null 2>&1; then
-        sudo dnf install -y java-21-openjdk-headless > /dev/null 2>&1 || true
-    elif command -v yum > /dev/null 2>&1; then
-        sudo yum install -y java-21-openjdk-headless > /dev/null 2>&1 || true
     fi
     return 0
 }
 
 # ═══════════════════════════════════════════════════════════
-# PM2 ENV
+# PM2 ENV SETUP
 # ═══════════════════════════════════════════════════════════
 setup_node_env() {
     local RUNTIME_PREF=$1
     install_node
 
     if ! command -v pm2 &> /dev/null && [ ! -x "/usr/local/bin/pm2" ] && [ ! -x "./node_modules/.bin/pm2" ]; then
-        sudo npm install -g pm2 > /dev/null 2>&1 || npm install -g pm2 > /dev/null 2>&1 || npm install --save-dev pm2 > /dev/null 2>&1 || true
+        sudo npm install -g pm2 > /dev/null 2>&1 || npm install -g pm2 > /dev/null 2>&1 || true
     fi
 
     local DEFAULT_RT="docker"
@@ -436,110 +368,79 @@ EOF2
 }
 
 # ═══════════════════════════════════════════════════════════
-# CLEAN INSTALL DEPS — full nuke, fixes MODULE_NOT_FOUND
+# INSTALL DEPS (clean)
 # ═══════════════════════════════════════════════════════════
 install_dependencies() {
-    if [ ! -f "package.json" ]; then
-        echo "package.json missing."; return 1
-    fi
+    [ -f "package.json" ] || { echo "package.json missing"; return 1; }
 
-    # Ensure .npmrc to prevent lock issues
-    if [ ! -f ".npmrc" ]; then
-        echo "legacy-peer-deps=true" > .npmrc
-    fi
+    [ -f ".npmrc" ] || echo "legacy-peer-deps=true" > .npmrc
 
-    # Full clean
-    echo "Cleaning node_modules & cache..."
     rm -rf node_modules package-lock.json 2>/dev/null || true
     npm cache clean --force > /dev/null 2>&1 || true
-
-    # Install
-    echo "Installing dependencies (this may take 2-3 minutes)..."
-    npm install --legacy-peer-deps --no-audit --no-fund 2>&1 | tail -20
+    npm install --legacy-peer-deps --no-audit --no-fund 2>&1 | tail -5
 }
 
 build_application() {
-    if [ ! -f "package.json" ]; then return 1; fi
-
+    [ -f "package.json" ] || return 1
     rm -rf dist 2>/dev/null || true
-    echo "Building (may take 1-2 minutes)..."
+    NODE_OPTIONS="--max-old-space-size=2048" npm run build 2>&1 | tail -10
 
-    # Build with more memory headroom
-    NODE_OPTIONS="--max-old-space-size=2048" npm run build 2>&1 | tail -30
-
-    if [ ! -f "dist/server.cjs" ]; then
-        echo "❌ dist/server.cjs not generated — build failed silently."
-        return 1
-    fi
-    if [ ! -f "dist/index.html" ]; then
-        echo "⚠ dist/index.html missing (frontend build may have failed)."
-    fi
+    [ -f "dist/server.cjs" ] || { echo "Build failed: no dist/server.cjs"; return 1; }
     return 0
 }
 
 # ═══════════════════════════════════════════════════════════
-# TEST SERVER — run node directly to catch errors BEFORE PM2
+# TEST SERVER DIRECTLY
 # ═══════════════════════════════════════════════════════════
 test_server_direct() {
-    if [ ! -f "dist/server.cjs" ]; then
-        echo "dist/server.cjs missing"; return 1
-    fi
-
-    echo "Testing server startup (10 seconds)..."
-    # Run in background, capture output, kill after 10s
-    timeout 10 node dist/server.cjs > /tmp/awp_test.log 2>&1
+    [ -f "dist/server.cjs" ] || return 1
+    timeout 8 node dist/server.cjs > /tmp/awp_test.log 2>&1
     local exit_code=$?
 
-    echo ""
-    echo "Server output:"
-    tail -30 /tmp/awp_test.log | sed 's/^/  /'
-    echo ""
-
-    # Check for common errors
     if grep -qi "MODULE_NOT_FOUND" /tmp/awp_test.log; then
-        echo "❌ Missing node module — node_modules may be incomplete."
-        grep -i "Cannot find module" /tmp/awp_test.log | head -5 | sed 's/^/  /'
+        echo "Missing module:"; grep -i "Cannot find module" /tmp/awp_test.log | head -3
         return 1
     fi
-
     if grep -qi "EADDRINUSE" /tmp/awp_test.log; then
-        echo "❌ Port $MAIN_PORT is already in use."
-        echo "   Kill existing process: pkill -f '$MAIN_PORT' || pm2 delete all"
-        return 1
+        echo "Port $MAIN_PORT already in use"; return 1
     fi
-
-    if grep -qi "Error" /tmp/awp_test.log; then
-        echo "⚠ Errors detected but continuing..."
-    fi
-
-    # Exit code 124 = timeout (means it started OK)
-    if [ "$exit_code" = "124" ]; then
-        echo "✅ Server started successfully (timed out as expected)"
+    if [ "$exit_code" = "124" ] || [ "$exit_code" = "0" ]; then
         return 0
     fi
-
-    if [ "$exit_code" = "0" ]; then
-        echo "⚠ Server exited immediately (check logs above)"
-        return 1
-    fi
-
     return 0
 }
 
 # ═══════════════════════════════════════════════════════════
-# START / STOP
+# STOP PANEL
 # ═══════════════════════════════════════════════════════════
 stop_panel() {
-    log_step "Stopping running panels..."
+    print_banner
+    echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
+    echo -e "    ║              ${WHITE}STOPPING ASTROWAX PANEL${PURPLE}                    ║"
+    echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
     run_pm2 delete "$MAIN_PROCESS" 2>/dev/null || true
+    run_pm2 delete astrowax-panel 2>/dev/null || true
+
     local DOCKER_CLI=$(get_docker_cmd)
     $DOCKER_CLI rm -f $MAIN_CONTAINER 2>/dev/null || true
-    log_success "Stopped."
+
+    # Kill any stray node running server.cjs
+    pkill -f "node.*dist/server.cjs" 2>/dev/null || true
+
+    log_success "Panel stopped."
+    echo ""
+    show_status
 }
 
+# ═══════════════════════════════════════════════════════════
+# START PANEL
+# ═══════════════════════════════════════════════════════════
 start_panel_node() {
     local TARGET=$1
-    # Kill anything on our port
+
+    # Kill port first
     if command -v fuser &> /dev/null; then
         fuser -k ${MAIN_PORT}/tcp 2>/dev/null || true
     fi
@@ -559,33 +460,92 @@ start_panel_node() {
     run_pm2 save --force 2>/dev/null || true
 }
 
-# ═══════════════════════════════════════════════════════════
-# HEALTH CHECK
-# ═══════════════════════════════════════════════════════════
-health_check() {
-    local PORT=$1
-    local ATTEMPTS=0
-    local MAX_ATTEMPTS=30
+start_panel() {
+    print_banner
+    echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
+    echo -e "    ║              ${WHITE}STARTING ASTROWAX PANEL${PURPLE}                    ║"
+    echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
 
-    while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
-        if curl -s -f "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1 || \
-           curl -s -f "http://127.0.0.1:${PORT}/" >/dev/null 2>&1; then
+    local PANEL_PATH=$(find_panel_dir)
+    if [ -z "$PANEL_PATH" ]; then
+        log_error "Panel not found. Install first."
+        return 1
+    fi
+
+    cd "$PANEL_PATH" || return 1
+    log_info "Panel dir: $(pwd)"
+    echo ""
+
+    # Check ecosystem exists
+    if [ ! -f "ecosystem.config.cjs" ]; then
+        log_warning "ecosystem.config.cjs missing — regenerating..."
+        setup_node_env "docker"
+    fi
+
+    # Check dist exists
+    if [ ! -f "dist/server.cjs" ]; then
+        log_warning "dist/ missing — building first..."
+        install_dependencies
+        build_application
+    fi
+
+    log_step "Starting PM2..."
+    start_panel_node "$MAIN_PROCESS"
+
+    log_step "Health check..."
+    local ATTEMPTS=0
+    while [ $ATTEMPTS -lt 20 ]; do
+        if curl -s -f "http://127.0.0.1:${MAIN_PORT}/" >/dev/null 2>&1; then
+            log_success "Panel is up!"
+            echo ""
+            show_status
             return 0
         fi
-
-        if run_pm2 list 2>/dev/null | grep "$MAIN_PROCESS" | grep -qE "errored|stopped"; then
-            echo "PM2 process crashed."
-            run_pm2 logs "$MAIN_PROCESS" --lines 50 --nostream 2>&1 || true
-            return 1
-        fi
-
         sleep 2
         ATTEMPTS=$((ATTEMPTS + 1))
     done
 
-    echo "Health check timed out."
-    run_pm2 list || true
-    run_pm2 logs "$MAIN_PROCESS" --lines 50 --nostream 2>&1 || true
+    log_error "Panel didn't start. Logs:"
+    run_pm2 logs "$MAIN_PROCESS" --lines 40 --nostream 2>&1 || true
+    return 1
+}
+
+# ═══════════════════════════════════════════════════════════
+# RESTART PANEL
+# ═══════════════════════════════════════════════════════════
+restart_panel() {
+    print_banner
+    echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
+    echo -e "    ║              ${WHITE}RESTARTING ASTROWAX PANEL${PURPLE}                  ║"
+    echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    local PANEL_PATH=$(find_panel_dir)
+    if [ -z "$PANEL_PATH" ]; then
+        log_error "Panel not found."
+        return 1
+    fi
+    cd "$PANEL_PATH" || return 1
+
+    log_step "Restarting PM2 process..."
+    run_pm2 restart "$MAIN_PROCESS" 2>/dev/null || {
+        log_warning "Process not found — starting fresh"
+        start_panel_node "$MAIN_PROCESS"
+    }
+    run_pm2 save --force 2>/dev/null || true
+
+    sleep 3
+
+    if curl -s -f "http://127.0.0.1:${MAIN_PORT}/" >/dev/null 2>&1; then
+        log_success "Panel restarted successfully."
+        echo ""
+        show_status
+        return 0
+    fi
+
+    log_error "Restart failed. Logs:"
+    run_pm2 logs "$MAIN_PROCESS" --lines 40 --nostream 2>&1 || true
     return 1
 }
 
@@ -598,7 +558,7 @@ show_status() {
     local VERSION_LABEL="${SELECTED_VERSION:-1.80}"
 
     if (run_pm2 list 2>/dev/null | grep "$MAIN_PROCESS" | grep -q "online") || \
-       curl -s -m 2 http://127.0.0.1:${MAIN_PORT}/api/health 2>/dev/null | grep -qi "astrowax"; then
+       curl -s -m 2 http://127.0.0.1:${MAIN_PORT}/ >/dev/null 2>&1; then
         MAIN_STATUS="ONLINE"
     fi
 
@@ -633,37 +593,63 @@ show_status() {
 }
 
 # ═══════════════════════════════════════════════════════════
+# VERSION SELECTOR
+# ═══════════════════════════════════════════════════════════
+choose_version() {
+    print_banner
+    echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
+    echo -e "    ║              ${WHITE}SELECT PANEL VERSION${PURPLE}                        ║"
+    echo -e "    ╠═══════════════════════════════════════════════════════════╣${NC}"
+    echo -e "    ║                                                           ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[1]${NC} ${WHITE}AstroWax Panel V1.80${NC}                              ║"
+    echo -e "    ║        ${GREY}Latest • Node 20 + PM2 + Docker${NC}                     ║"
+    echo -e "    ║                                                           ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[2]${NC} ${WHITE}AstroWax Panel V1.0 (Legacy)${NC}                      ║"
+    echo -e "    ║        ${GREY}Classic • Node 20 + SQLite${NC}                          ║"
+    echo -e "    ║                                                           ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[3]${NC} ${WHITE}Back${NC}                                              ║"
+    echo -e "    ║                                                           ║"
+    echo -e "${PURPLE}${BOLD}    ╚═══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    local vc=""
+    if [ -n "$VERSION_CHOICE" ]; then vc="$VERSION_CHOICE"
+    elif [ ! -t 0 ]; then vc="1"
+    else read -p "    Choose (1-3): " vc; fi
+
+    case "$vc" in
+        1) SELECTED_VERSION="1.80"; log_success "Selected: V1.80" ;;
+        2) SELECTED_VERSION="1.0"; log_success "Selected: V1.0" ;;
+        3) return 1 ;;
+        *) log_error "Invalid."; return 1 ;;
+    esac
+    echo ""
+    sleep 1
+    return 0
+}
+
+# ═══════════════════════════════════════════════════════════
 # INSTALL V1.80
 # ═══════════════════════════════════════════════════════════
 install_panel_v180() {
     print_banner
 
-    local PANEL_PATH=""
-    if [ -f "package.json" ] && [ -d "src" ]; then
-        PANEL_PATH="."
-    elif [ -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
-        PANEL_PATH="$WORK_DIR_NAME/$PANEL_DIR_NAME"
-    fi
+    local PANEL_PATH=$(find_panel_dir)
 
     if [ -z "$PANEL_PATH" ]; then
         echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
         echo -e "    ║              ${WHITE}DOWNLOADING PANEL V1.80${PURPLE}                    ║"
         echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
         echo ""
-        execute_step "Downloading AstroWax Panel V1.80" download_panel_v180
-        if [ -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
-            PANEL_PATH="$WORK_DIR_NAME/$PANEL_DIR_NAME"
-        else
-            log_error "Panel not found after download."
-            find . -maxdepth 4 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null
-            exit 1
-        fi
+        execute_step "Downloading AstroWax Panel V1.80" download_panel_v180 || { log_error "Download failed."; exit 1; }
+        PANEL_PATH="$WORK_DIR_NAME/$PANEL_DIR_NAME"
     fi
 
     cd "$PANEL_PATH" || { log_error "Cannot enter panel dir."; exit 1; }
     log_info "Working directory: $(pwd)"
     echo ""
 
+    # Mode selection
     echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
     echo -e "    ║              ${WHITE}SELECT INSTALLATION MODE${PURPLE}                   ║"
     echo -e "    ╠═══════════════════════════════════════════════════════════╣${NC}"
@@ -672,22 +658,18 @@ install_panel_v180() {
     echo -e "    ║        ${GREY}Docker used for Minecraft servers${NC}                  ║"
     echo -e "    ║                                                           ║"
     echo -e "    ║    ${LIGHT_PURPLE}[2]${NC} ${WHITE}Pure Local Node.js${NC}                                ║"
-    echo -e "    ║        ${GREY}Node.js/Local for Minecraft servers${NC}                ║"
+    echo -e "    ║        ${GREY}Local for Minecraft servers${NC}                        ║"
     echo -e "    ║                                                           ║"
     echo -e "    ║    ${LIGHT_PURPLE}[3]${NC} ${WHITE}Back${NC}                                              ║"
     echo -e "    ║                                                           ║"
     echo -e "${PURPLE}${BOLD}    ╚═══════════════════════════════════════════════════════════╝${NC}"
 
     local MODE_CHOICE=""
-    if [ -n "$RUN_CHOICE" ]; then
-        MODE_CHOICE="$RUN_CHOICE"
-    elif [ ! -t 0 ]; then
-        MODE_CHOICE="1"
-    else
-        read -p "    Choose (1-3): " MODE_CHOICE
-    fi
+    if [ -n "$RUN_CHOICE" ]; then MODE_CHOICE="$RUN_CHOICE"
+    elif [ ! -t 0 ]; then MODE_CHOICE="1"
+    else read -p "    Choose (1-3): " MODE_CHOICE; fi
 
-    if [ "$MODE_CHOICE" = "3" ]; then return 1; fi
+    [ "$MODE_CHOICE" = "3" ] && return 1
     if [ "$MODE_CHOICE" != "1" ] && [ "$MODE_CHOICE" != "2" ]; then
         log_error "Invalid."; return 1
     fi
@@ -712,18 +694,34 @@ install_panel_v180() {
     execute_step "Java Runtime Environment" install_java
 
     local RUNTIME_ARG="docker"
-    if [ "$MODE_CHOICE" = "2" ]; then RUNTIME_ARG="local"; fi
+    [ "$MODE_CHOICE" = "2" ] && RUNTIME_ARG="local"
 
     execute_step "Node.js Configuration (v20)" setup_node_env "$RUNTIME_ARG"
-    execute_step "Installing Dependencies (clean)" install_dependencies
+    execute_step "Installing Dependencies" install_dependencies
     execute_step "Building Application" build_application
-
-    # ✅ NEW: test server directly before PM2
     execute_step "Testing Server Startup" test_server_direct
-
     execute_step "Starting PM2 Service" start_panel_node "$MAIN_PROCESS"
-    execute_step "Health Check" health_check $MAIN_PORT
 
+    # Health check
+    log_step "Waiting for panel..."
+    local ATTEMPTS=0
+    local OK=0
+    while [ $ATTEMPTS -lt 30 ]; do
+        if curl -s -f "http://127.0.0.1:${MAIN_PORT}/" >/dev/null 2>&1; then
+            OK=1
+            break
+        fi
+        sleep 2
+        ATTEMPTS=$((ATTEMPTS + 1))
+    done
+
+    if [ "$OK" != "1" ]; then
+        log_error "Panel failed to start"
+        run_pm2 logs "$MAIN_PROCESS" --lines 40 --nostream 2>&1 || true
+        return 1
+    fi
+
+    log_success "Health check passed"
     show_status
 
     local IP=$(curl -s -m 2 ifconfig.me 2>/dev/null || curl -s -m 2 icanhazip.com 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
@@ -733,28 +731,24 @@ install_panel_v180() {
     echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "    ${WHITE}Panel URL${NC}  : ${LIGHT_PURPLE}http://${IP}:${MAIN_PORT}${NC}"
+    echo -e "    ${WHITE}Register${NC}   : ${LIGHT_PURPLE}http://${IP}:${MAIN_PORT}/register${NC}"
     echo -e "    ${WHITE}Version${NC}    : ${LIGHT_PURPLE}AstroWax Panel V1.80${NC}"
     echo -e "    ${WHITE}Node${NC}       : ${LIGHT_PURPLE}$(node -v)${NC}"
     echo ""
-    echo -e "    ${YELLOW}${BOLD}First-time setup:${NC}"
-    echo -e "    ${WHITE}1.${NC} Open ${LIGHT_PURPLE}http://${IP}:${MAIN_PORT}/register${NC}"
-    echo -e "    ${WHITE}2.${NC} Create your account — ${YELLOW}first user becomes OWNER${NC}"
-    echo -e "    ${WHITE}3.${NC} Login and start managing your servers"
+    echo -e "    ${YELLOW}First user to register becomes OWNER automatically.${NC}"
     echo ""
     echo -e "    ${GREY}Made by ${LIGHT_PURPLE}Itzytansh${NC}"
     echo ""
 }
 
 # ═══════════════════════════════════════════════════════════
-# INSTALL V1.0 (Legacy)
+# INSTALL V1.0
 # ═══════════════════════════════════════════════════════════
 install_panel_v10() {
     print_banner
     echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
-    echo -e "    ║              ${WHITE}INSTALLING ASTROWAX PANEL V1.0${PURPLE}              ║"
-    echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    echo -e "${PURPLE}${BOLD}    ╔═══════════════════════════════════════════════════════════╗"
+    echo -e "    ║              ${WHITE}INSTALLING V1.0 (Legacy)${PURPLE}                    ║"
+    echo -e "    ╠═══════════════════════════════════════════════════════════╣${NC}"
     echo -e "    ║    ${LIGHT_PURPLE}[1]${NC} ${WHITE}Panel only${NC}                                        ║"
     echo -e "    ║    ${LIGHT_PURPLE}[2]${NC} ${WHITE}Node Daemon only${NC}                                  ║"
     echo -e "    ║    ${LIGHT_PURPLE}[3]${NC} ${WHITE}BOTH (Panel + Node Daemon)${NC}                        ║"
@@ -780,7 +774,7 @@ install_v10_panel() {
     log_step "Installing Panel V1.0..."
     echo ""
     bash -c 'set -e; export DEBIAN_FRONTEND=noninteractive; sudo apt-get update -y && sudo apt-get install -y curl git unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config libsqlite3-dev sqlite3 && (command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash) && export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"; [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh"; nvm install 20 && nvm use 20 && rm -rf ~/AstroWax-Panel && git clone https://github.com/AstroVoidHostDev/AstroWax-Panel ~/AstroWax-Panel && cd ~/AstroWax-Panel && unzip -oq panel.zip && cd panel && rm -rf node_modules package-lock.json && npm cache clean --force && npm install --legacy-peer-deps && npm install connect-sqlite3 sqlite3 && npm run seed && npm run createUser'
-    log_success "Panel V1.0 installed to ~/AstroWax-Panel"
+    log_success "V1.0 Panel installed to ~/AstroWax-Panel"
     echo ""
     echo -e "    ${WHITE}Run:${NC} ${LIGHT_PURPLE}cd ~/AstroWax-Panel/panel && node .${NC}"
     echo ""
@@ -791,18 +785,17 @@ install_v10_node_daemon() {
     log_step "Installing Node Daemon V1.0..."
     echo ""
     bash -c 'set -e; export DEBIAN_FRONTEND=noninteractive; sudo apt-get update -y && sudo apt-get install -y curl git zip unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config && (command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash) && export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"; [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh"; nvm install 20 && nvm use 20 && rm -rf ~/WaxDaemon && git clone https://github.com/AstroVoidHostDev/WaxDaemon ~/WaxDaemon && cd ~/WaxDaemon && unzip -oq waxdaemon.zip && cd daemon/daemon && [ -f index.js.txt ] && mv index.js.txt index.js || true && rm -rf node_modules package-lock.json && npm cache clean --force && npm install --legacy-peer-deps'
-    log_success "Node Daemon V1.0 installed to ~/WaxDaemon/daemon/daemon"
+    log_success "Node Daemon installed to ~/WaxDaemon/daemon/daemon"
     echo ""
     echo -e "${YELLOW}${BOLD}    ═══════════════════════════════════════════════${NC}"
-    echo -e "${WHITE}${BOLD}    Paste your daemon config now.${NC}"
-    echo -e "${WHITE}${BOLD}    Then run:${NC}"
+    echo -e "${WHITE}${BOLD}    Paste your daemon config, then run:${NC}"
     echo -e "${LIGHT_PURPLE}    cd ~/WaxDaemon/daemon/daemon && node .${NC}"
     echo -e "${YELLOW}${BOLD}    ═══════════════════════════════════════════════${NC}"
     echo ""
 }
 
 # ═══════════════════════════════════════════════════════════
-# UPDATE
+# UPDATE PANEL
 # ═══════════════════════════════════════════════════════════
 update_panel() {
     print_banner
@@ -811,10 +804,11 @@ update_panel() {
     echo -e "    ╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
-    local PANEL_PATH=""
-    if [ -f "package.json" ] && [ -d "src" ]; then PANEL_PATH="."
-    elif [ -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then PANEL_PATH="$WORK_DIR_NAME/$PANEL_DIR_NAME"
-    else log_error "Panel not installed."; return 1; fi
+    local PANEL_PATH=$(find_panel_dir)
+    if [ -z "$PANEL_PATH" ]; then
+        log_error "Panel not installed."
+        return 1
+    fi
 
     cd "$PANEL_PATH" || return 1
     log_info "Updating: $(pwd)"
@@ -825,11 +819,19 @@ update_panel() {
     local new_dir="${temp_dir}/new"
     mkdir -p "$new_dir" || return 1
 
-    curl -fsSL "$archive_url" -o "/tmp/awp_update.zip" 2>/dev/null || {
-        log_error "Download failed."; rm -rf "$temp_dir"; return 1; }
+    log_step "Downloading latest..."
+    if ! curl -fsSL "$archive_url" -o "/tmp/awp_update.zip" 2>/dev/null; then
+        log_error "Download failed."
+        rm -rf "$temp_dir"
+        return 1
+    fi
 
+    log_step "Extracting..."
     unzip -q -o "/tmp/awp_update.zip" -d "$new_dir" 2>/dev/null || {
-        log_error "Extract failed."; rm -rf "$temp_dir" "/tmp/awp_update.zip"; return 1; }
+        log_error "Extract failed."
+        rm -rf "$temp_dir" "/tmp/awp_update.zip"
+        return 1
+    }
 
     local actual_new_root="$new_dir"
     if [ -d "$new_dir/$WORK_DIR_NAME/$PANEL_DIR_NAME" ]; then
@@ -838,8 +840,8 @@ update_panel() {
         actual_new_root="$new_dir/$PANEL_DIR_NAME"
     fi
 
-    stop_panel
-    echo ""
+    log_step "Stopping panel..."
+    run_pm2 stop "$MAIN_PROCESS" 2>/dev/null || true
 
     log_step "Preserving user data..."
     local PRESERVE_DIR="/tmp/awp_preserve_$$"
@@ -852,11 +854,12 @@ update_panel() {
     tar -czf "$BACKUP_NAME.tar.gz" --exclude=node_modules --exclude=.git . 2>/dev/null || true
     log_success "Backup: $BACKUP_NAME.tar.gz"
 
-    cd "$PANEL_PATH" || return 1
+    log_step "Applying new files..."
     rm -rf src server public 2>/dev/null || true
     rm -f package.json package-lock.json index.html vite.config.ts tsconfig.json server.ts ecosystem.config.cjs 2>/dev/null || true
     cp -r "$actual_new_root"/* . 2>/dev/null || true
 
+    log_step "Restoring user data..."
     [ -f "$PRESERVE_DIR/.env" ] && cp "$PRESERVE_DIR/.env" . 2>/dev/null || true
     [ -d "$PRESERVE_DIR/.data" ] && cp -r "$PRESERVE_DIR/.data" . 2>/dev/null || true
     [ -d "$PRESERVE_DIR/backups" ] && cp -r "$PRESERVE_DIR/backups" . 2>/dev/null || true
@@ -865,9 +868,17 @@ update_panel() {
     echo ""
     execute_step "Installing Dependencies" install_dependencies
     execute_step "Building Application" build_application
-    execute_step "Testing Server" test_server_direct
     execute_step "Restarting Panel" start_panel_node "$MAIN_PROCESS"
-    execute_step "Health Check" health_check $MAIN_PORT
+
+    log_step "Health check..."
+    local ATTEMPTS=0
+    while [ $ATTEMPTS -lt 20 ]; do
+        if curl -s -f "http://127.0.0.1:${MAIN_PORT}/" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 2
+        ATTEMPTS=$((ATTEMPTS + 1))
+    done
 
     rm -rf "$temp_dir" "/tmp/awp_update.zip"
 
@@ -895,7 +906,8 @@ uninstall_panel() {
     if [ -t 0 ]; then
         read -p "    Type 'yes' to confirm: " CONFIRM
         if [ "$CONFIRM" != "yes" ]; then
-            echo -e "    ${YELLOW}Cancelled.${NC}"; return 0
+            echo -e "    ${YELLOW}Cancelled.${NC}"
+            return 0
         fi
     fi
 
@@ -909,21 +921,20 @@ uninstall_panel() {
     $DOCKER_CLI rm -f "astrowax-main" 2>/dev/null || true
     $DOCKER_CLI rm -f "astrowax-admin" 2>/dev/null || true
 
+    pkill -f "node.*dist/server.cjs" 2>/dev/null || true
+
     log_success "Services stopped."
 
     echo ""
+    local DELETE_DATA="n"
     if [ -t 0 ]; then
         read -p "    Also delete panel files and user data? (y/N): " DELETE_DATA
-    else
-        DELETE_DATA="n"
     fi
 
     if [ "$DELETE_DATA" = "y" ] || [ "$DELETE_DATA" = "Y" ]; then
         log_step "Removing panel files..."
-        local PANEL_PATH=""
-        if [ -f "package.json" ] && [ -d "src" ]; then PANEL_PATH="$(pwd)"
-        elif [ -d "$WORK_DIR_NAME/$PANEL_DIR_NAME" ]; then PANEL_PATH="$(pwd)/$WORK_DIR_NAME/$PANEL_DIR_NAME"; fi
 
+        local PANEL_PATH=$(find_panel_dir)
         if [ -n "$PANEL_PATH" ]; then
             cd "$(dirname "$PANEL_PATH")" 2>/dev/null || true
             rm -rf "$(basename "$PANEL_PATH")" 2>/dev/null || true
@@ -958,17 +969,21 @@ for arg in "$@"; do
     esac
 done
 
-if [ "$1" = "install" ] || [ "$1" = "main" ]; then
-    if choose_version; then
-        if [ "$SELECTED_VERSION" = "1.0" ]; then install_panel_v10
-        else install_panel_v180; fi
-    fi
-    exit 0
-elif [ "$1" = "update" ]; then
-    update_panel; exit 0
-elif [ "$1" = "uninstall" ]; then
-    uninstall_panel; exit 0
-fi
+case "$1" in
+    install|main)
+        if choose_version; then
+            if [ "$SELECTED_VERSION" = "1.0" ]; then install_panel_v10
+            else install_panel_v180; fi
+        fi
+        exit 0
+        ;;
+    update)    update_panel; exit 0 ;;
+    uninstall) uninstall_panel; exit 0 ;;
+    start)     start_panel; exit 0 ;;
+    stop)      stop_panel; exit 0 ;;
+    restart)   restart_panel; exit 0 ;;
+    status)    show_status; exit 0 ;;
+esac
 
 # ═══════════════════════════════════════════════════════════
 # INTERACTIVE MENU
@@ -976,20 +991,27 @@ fi
 while true; do
     print_banner
     echo -e "    ${PURPLE}${BOLD}╔═══════════════════════════════════════════════════════════╗"
-    echo -e "    ║              ${WHITE}SELECT AN OPTION${PURPLE}                            ║"
+    echo -e "    ║              ${WHITE}ASTROWAX PANEL CONTROLLER${PURPLE}                  ║"
     echo -e "    ╠═══════════════════════════════════════════════════════════╣${NC}"
     echo -e "    ║                                                           ║"
-    echo -e "    ║    ${LIGHT_PURPLE}[1]${NC} ${WHITE}Install AstroWax Panel${NC}                            ║"
-    echo -e "    ║    ${LIGHT_PURPLE}[2]${NC} ${WHITE}Update AstroWax Panel${NC}                             ║"
-    echo -e "    ║    ${LIGHT_PURPLE}[3]${NC} ${WHITE}Uninstall AstroWax Panel${NC}                          ║"
-    echo -e "    ║    ${LIGHT_PURPLE}[4]${NC} ${WHITE}Exit${NC}                                              ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[1]${NC} ${WHITE}Install Panel${NC}                                     ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[2]${NC} ${WHITE}Update Panel${NC}                                      ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[3]${NC} ${GREEN}Start Panel${NC}                                       ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[4]${NC} ${RED}Stop Panel${NC}                                        ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[5]${NC} ${YELLOW}Restart Panel${NC}                                     ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[6]${NC} ${WHITE}Show Status${NC}                                       ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[7]${NC} ${WHITE}Uninstall Panel${NC}                                   ║"
+    echo -e "    ║    ${LIGHT_PURPLE}[8]${NC} ${WHITE}Exit${NC}                                              ║"
     echo -e "    ║                                                           ║"
     echo -e "    ${PURPLE}${BOLD}╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "    ${GREY}AstroWax Panel  •  Made by ${LIGHT_PURPLE}Itzytansh${NC}"
     echo ""
 
-    if ! read -p "    Choose (1-4): " CHOICE; then echo ""; break; fi
+    if ! read -p "    Choose (1-8): " CHOICE; then
+        echo ""
+        break
+    fi
 
     case "$CHOICE" in
         1)
@@ -1000,8 +1022,12 @@ while true; do
             if [ -t 0 ]; then read -p "    Press Enter..." || true; fi
             ;;
         2) update_panel; if [ -t 0 ]; then read -p "    Press Enter..." || true; fi ;;
-        3) uninstall_panel; if [ -t 0 ]; then read -p "    Press Enter..." || true; fi ;;
-        4) echo ""; echo -e "    ${LIGHT_PURPLE}Goodbye! 👋${NC}"; echo ""; exit 0 ;;
-        *) log_error "Invalid!"; sleep 1.5 ;;
+        3) start_panel; if [ -t 0 ]; then read -p "    Press Enter..." || true; fi ;;
+        4) stop_panel; if [ -t 0 ]; then read -p "    Press Enter..." || true; fi ;;
+        5) restart_panel; if [ -t 0 ]; then read -p "    Press Enter..." || true; fi ;;
+        6) show_status; if [ -t 0 ]; then read -p "    Press Enter..." || true; fi ;;
+        7) uninstall_panel; if [ -t 0 ]; then read -p "    Press Enter..." || true; fi ;;
+        8) echo ""; echo -e "    ${LIGHT_PURPLE}Goodbye! 👋${NC}"; echo ""; exit 0 ;;
+        *) log_error "Invalid option!"; sleep 1.5 ;;
     esac
 done
