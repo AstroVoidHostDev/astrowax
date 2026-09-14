@@ -1,110 +1,196 @@
 #!/bin/bash
-# =========================================================
-# AstroWax Panel — Master Control Script
-# Made by Itzytansh
-# =========================================================
+# ═══════════════════════════════════════════════════════════
+# 🚀 ASTROWAX PANEL — MASTER CONTROL SCRIPT v2.0
+# 🎨 Premium Edition • 4K Visuals • Pro UX
+# ✨ Made by Itzytansh
+# ═══════════════════════════════════════════════════════════
+
 set -o pipefail
-export LANG="${LANG:-en_US.UTF-8}"
-export LC_ALL="${LC_ALL:-en_US.UTF-8}"
 
-if [ -z "${BASH_VERSION:-}" ]; then
-    if command -v bash >/dev/null 2>&1; then
-        exec bash "$0" "$@"
-    fi
+# ═══════════════════════════════════════════════════════════
+# 🎨 RGB COLOR SYSTEM (True Color / 256 Color Fallback)
+# ═══════════════════════════════════════════════════════════
+if [[ $(tput colors 2>/dev/null) -ge 256 ]]; then
+    # True Color / 256 Color Palette
+    C_RESET='\033[0m'
+    C_BOLD='\033[1m'
+    C_DIM='\033[2m'
+    C_ITALIC='\033[3m'
+    C_UNDERLINE='\033[4m'
+    C_BLINK='\033[5m'
+    C_REVERSE='\033[7m'
+    
+    # Cyberpunk Neon Palette
+    C_CYAN='\033[38;5;51m'
+    C_CYAN_L='\033[38;5;87m'
+    C_PURPLE='\033[38;5;129m'
+    C_PURPLE_L='\033[38;5;171m'
+    C_PINK='\033[38;5;207m'
+    C_RED='\033[38;5;196m'
+    C_RED_L='\033[38;5;203m'
+    C_GREEN='\033[38;5;46m'
+    C_GREEN_L='\033[38;5;120m'
+    C_YELLOW='\033[38;5;226m'
+    C_ORANGE='\033[38;5;208m'
+    C_WHITE='\033[38;5;231m'
+    C_GRAY='\033[38;5;241m'
+    C_GRAY_L='\033[38;5;250m'
+    
+    # Backgrounds
+    BG_PURPLE='\033[48;5;54m'
+    BG_CYAN='\033[48;5;33m'
+    BG_DARK='\033[48;5;236m'
+else
+    # Fallback to basic colors
+    C_RESET='\033[0m'
+    C_BOLD='\033[1m'
+    C_DIM='\033[2m'
+    C_ITALIC='\033[3m'
+    C_UNDERLINE='\033[4m'
+    C_CYAN='\033[0;36m'
+    C_CYAN_L='\033[1;36m'
+    C_PURPLE='\033[0;35m'
+    C_PURPLE_L='\033[1;35m'
+    C_PINK='\033[1;35m'
+    C_RED='\033[0;31m'
+    C_RED_L='\033[1;31m'
+    C_GREEN='\033[0;32m'
+    C_GREEN_L='\033[1;32m'
+    C_YELLOW='\033[1;33m'
+    C_ORANGE='\033[0;33m'
+    C_WHITE='\033[1;37m'
+    C_GRAY='\033[0;37m'
+    C_GRAY_L='\033[1;30m'
+    BG_PURPLE='\033[45m'
+    BG_CYAN='\033[46m'
+    BG_DARK='\033[40m'
 fi
 
 # ═══════════════════════════════════════════════════════════
-# TERMINAL / COLOR ENGINE
+# 🎭 VISUAL EFFECTS ENGINE
 # ═══════════════════════════════════════════════════════════
-AWP_TRUECOLOR=0
-AWP_COLOR=0
-AWP_UNICODE=1
-AWP_TTY=0
-[ -t 1 ] && AWP_TTY=1
 
-if [ "$AWP_TTY" -eq 1 ]; then
-    AWP_COLOR=1
-    case "${COLORTERM:-}${TERM:-}" in
-        *truecolor*|*24bit*|*256color*|*-256*) AWP_TRUECOLOR=1 ;;
-    esac
-    case "${TERM:-}" in
-        *-256color|xterm*|screen*|tmux*|alacritty*|kitty*|wezterm*) AWP_TRUECOLOR=1 ;;
-    esac
-fi
-[ "${NO_COLOR:-}" != "" ] && AWP_COLOR=0 && AWP_TRUECOLOR=0
-[ "${TERM:-}" = "dumb" ] && AWP_COLOR=0 && AWP_TRUECOLOR=0
-
-if ! printf '✓' | grep -q '✓' 2>/dev/null; then AWP_UNICODE=0; fi
-
-c() {
-    [ "$AWP_COLOR" -eq 1 ] || return 0
-    printf '\033[%sm' "$1"
-}
-rgb() {
-    if [ "$AWP_TRUECOLOR" -eq 1 ]; then
-        printf '\033[38;2;%s;%s;%sm' "$1" "$2" "$3"
-    elif [ "$AWP_COLOR" -eq 1 ]; then
-        printf '\033[38;5;%sm' "$4"
-    fi
-}
-bg_rgb() {
-    if [ "$AWP_TRUECOLOR" -eq 1 ]; then
-        printf '\033[48;2;%s;%s;%sm' "$1" "$2" "$3"
-    elif [ "$AWP_COLOR" -eq 1 ]; then
-        printf '\033[48;5;%sm' "$4"
-    fi
+# Gradient Text Generator
+gradient_text() {
+    local text="$1"
+    local start_color="$2"
+    local end_color="$3"
+    local len=${#text}
+    local result=""
+    
+    for ((i=0; i<len; i++)); do
+        local char="${text:$i:1}"
+        local progress=$((i * 100 / len))
+        if [[ $progress -lt 50 ]]; then
+            result+="${start_color}${char}"
+        else
+            result+="${end_color}${char}"
+        fi
+    done
+    echo -e "${result}${C_RESET}"
 }
 
-NC='\033[0m'
-BOLD='\033[1m'
-DIM='\033[2m'
-ITAL='\033[3m'
-UND='\033[4m'
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-PURPLE='\033[0;35m'
-LIGHT_PURPLE='\033[1;35m'
-CYAN='\033[0;36m'
-WHITE='\033[1;37m'
-GREY='\033[0;37m'
-MAGENTA='\033[38;5;177m'
-
-P1="$(rgb 168 85 247 141)"
-P2="$(rgb 192 132 252 177)"
-P3="$(rgb 216 180 254 183)"
-C1="$(rgb 34 211 238 51)"
-C2="$(rgb 56 189 248 45)"
-G1="$(rgb 52 211 153 84)"
-R1="$(rgb 248 113 113 203)"
-Y1="$(rgb 251 191 36 220)"
-W1="$(rgb 248 250 252 255)"
-M1="$(rgb 148 163 184 246)"
-BG="$(rgb 15 10 28 234)"
-
-term_cols() {
-    local w
-    w=$(tput cols 2>/dev/null || echo 80)
-    [ "$w" -lt 60 ] && w=60
-    [ "$w" -gt 120 ] && w=120
-    echo "$w"
+# Glitch Effect (Cyberpunk Style)
+glitch_text() {
+    local text="$1"
+    local colors=("$C_CYAN" "$C_PURPLE" "$C_PINK" "$C_RED")
+    local result=""
+    
+    for ((i=0; i<${#text}; i++)); do
+        local char="${text:$i:1}"
+        local color_idx=$((RANDOM % ${#colors[@]}))
+        result+="${colors[$color_idx]}${char}"
+    done
+    echo -e "${result}${C_RESET}"
 }
 
-hide_cursor() { [ "$AWP_TTY" -eq 1 ] && printf '\033[?25l'; }
-show_cursor() { [ "$AWP_TTY" -eq 1 ] && printf '\033[?25h'; }
-clear_screen() { [ "$AWP_TTY" -eq 1 ] && { clear 2>/dev/null || printf '\033[2J\033[H'; }; }
-
-cleanup_ui() {
-    show_cursor
-    printf '\033[0m' 2>/dev/null || true
+# Animated Progress Bar
+progress_bar() {
+    local current=$1
+    local total=$2
+    local width=40
+    local percentage=$((current * 100 / total))
+    local filled=$((current * width / total))
+    local empty=$((width - filled))
+    
+    printf "\r${C_DIM}["
+    printf "${C_CYAN_L}"
+    for ((i=0; i<filled; i++)); do printf "█"; done
+    printf "${C_GRAY_L}"
+    for ((i=0; i<empty; i++)); do printf "░"; done
+    printf "${C_DIM}]${C_RESET} ${C_BOLD}%3d%%${C_RESET}" "$percentage"
 }
-trap 'cleanup_ui' EXIT
-trap 'cleanup_ui; exit 130' INT
-trap 'cleanup_ui; exit 143' TERM
+
+# Spinner Animation
+spinner() {
+    local pid=$1
+    local msg="$2"
+    local spinstr='⠋⠙⠹⠼⠦⠇'
+    local i=0
+    
+    printf "  ${C_CYAN}⟳${C_RESET} ${msg} "
+    while kill -0 $pid 2>/dev/null; do
+        printf "\b${spinstr:$i:1}"
+        i=$(( (i+1) % 10 ))
+        sleep 0.1
+    done
+    printf "\b✓"
+}
 
 # ═══════════════════════════════════════════════════════════
-# CONFIG
+# 🎨 PREMIUM BANNER SYSTEM
 # ═══════════════════════════════════════════════════════════
+
+print_banner() {
+    clear 2>/dev/null || true
+    
+    # Dynamic ASCII Art
+    echo -e "${C_PURPLE_L}${C_BOLD}"
+    cat << 'EOF'
+    ╔═══════════════════════════════════════════════════════════╗
+    ║                                                           ║
+    ║     █████╗ ██████╗  ██████╗ ██╗   ██╗███████╗             ║
+    ║    ██╔══██╗██╔══██╗██╔═══██╗██║   ██║██╔════╝             ║
+    ║    ███████║██║  ██║██║   ██║██║   ██║█████╗               ║
+    ║    ██╔══██║██║  ██║██║   ██║╚██╗ ██╔╝██╔══╝               ║
+    ║    ██║  ██║██████╔╝╚██████╔╝ ╚████╔╝ ███████╗             ║
+    ║    ╚═╝  ╚═╝╚═════╝  ╚═════╝   ╚═══╝  ╚══════╝             ║
+    ║                                                           ║
+EOF
+    echo -e "    ║${C_RESET}          ${C_CYAN_L}${C_BOLD}ASTROWAX PANEL${C_RESET}${C_PURPLE_L} • ${C_PINK}v1.80${C_RESET}${C_PURPLE_L}                      ║"
+    echo -e "    ║${C_RESET}          ${C_GRAY_L}Next-Gen Hosting Control${C_RESET}${C_PURPLE_L}                     ║"
+    echo -e "    ║${C_RESET}          ${C_DIM}Crafted by ${C_YELLOW}Itzytansh${C_RESET}${C_PURPLE_L}                              ║"
+    echo -e "    ║                                                           ║"
+    echo -e "    ╚═══════════════════════════════════════════════════════════╝${C_RESET}"
+    echo ""
+}
+
+print_header() {
+    local title="$1"
+    local subtitle="$2"
+    
+    echo -e "${C_PURPLE_L}${C_BOLD}    ╔═══════════════════════════════════════════════════════════╗${C_RESET}"
+    echo -e "${C_PURPLE_L}${C_BOLD}    ║${C_RESET}  ${C_CYAN_L}${C_BOLD}$(printf '%-56s' "$title")${C_RESET}${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "${C_PURPLE_L}${C_BOLD}    ║${C_RESET}  ${C_GRAY_L}$(printf '%-56s' "$subtitle")${C_RESET}${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "${C_PURPLE_L}${C_BOLD}    ╚═══════════════════════════════════════════════════════════╝${C_RESET}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════
+# 📡 LOGGING SYSTEM (Enhanced)
+# ═══════════════════════════════════════════════════════════
+
+log_info()    { echo -e "  ${C_CYAN}ℹ${C_RESET}  $1"; }
+log_success() { echo -e "  ${C_GREEN}✓${C_RESET}  ${C_GREEN_L}$1${C_RESET}"; }
+log_warning() { echo -e "  ${C_YELLOW}⚠${C_RESET}  ${C_ORANGE}$1${C_RESET}"; }
+log_error()   { echo -e "  ${C_RED}✗${C_RESET}  ${C_RED_L}$1${C_RESET}"; }
+log_step()    { echo -e "  ${C_PURPLE_L}➜${C_RESET}  ${C_BOLD}$1${C_RESET}"; }
+log_debug()   { echo -e "  ${C_GRAY}🔍${C_RESET} $1"; }
+
+# ═══════════════════════════════════════════════════════════
+# ⚙️ CONFIGURATION
+# ═══════════════════════════════════════════════════════════
+
 GH_USER="${ASTROWAX_GH_USER:-AstroVoidHostDev}"
 GH_REPO="${ASTROWAX_GH_REPO:-astrowax}"
 GH_BRANCH="${ASTROWAX_GH_BRANCH:-main}"
@@ -121,126 +207,24 @@ MAIN_PROCESS="astrowax-main"
 MAIN_CONTAINER="astrowax-main"
 MAIN_PORT="6767"
 SFTP_PORT="6868"
-SCRIPT_VERSION="2.0.0"
 
 SELECTED_VERSION=""
-AWP_START_TS=$(date +%s)
 
 # ═══════════════════════════════════════════════════════════
-# UI PRIMITIVES
+# 🔧 HELPER FUNCTIONS
 # ═══════════════════════════════════════════════════════════
-repeat_char() {
-    local ch="$1" n="$2" out=""
-    while [ "$n" -gt 0 ]; do out="${out}${ch}"; n=$((n - 1)); done
-    printf '%s' "$out"
-}
 
-hr() {
-    local w; w=$(term_cols)
-    printf "    ${P1}%s${NC}\n" "$(repeat_char '─' $((w - 8)))"
-}
-
-print_banner() {
-    clear_screen
-    local g1 g2 g3 g4 g5 a
-    g1="$(rgb 124 58 237 93)"
-    g2="$(rgb 147 51 234 129)"
-    g3="$(rgb 168 85 247 141)"
-    g4="$(rgb 192 132 252 177)"
-    g5="$(rgb 34 211 238 51)"
-    a="$(rgb 226 232 240 255)"
-
-    echo ""
-    echo -e "${g1}    ╭──────────────────────────────────────────────────────────────╮${NC}"
-    echo -e "${g2}    │                                                              │${NC}"
-    echo -e "${g3}    │      ${W1}${BOLD}█████╗ ███████╗████████╗██████╗  ██████╗ ██╗    ██╗ █████╗ ██╗  ██╗${NC}${g3}  │${NC}"
-    echo -e "${g3}    │      ${P2}██╔══██╗██╔════╝╚══██╔══╝██╔══██╗██╔═══██╗██║    ██║██╔══██╗╚██╗██╔╝${NC}${g3}  │${NC}"
-    echo -e "${g4}    │      ${P3}███████║███████╗   ██║   ██████╔╝██║   ██║██║ █╗ ██║███████║ ╚███╔╝${NC}${g4}   │${NC}"
-    echo -e "${g4}    │      ${C1}██╔══██║╚════██║   ██║   ██╔══██╗██║   ██║██║███╗██║██╔══██║ ██╔██╗${NC}${g4}   │${NC}"
-    echo -e "${g5}    │      ${C2}██║  ██║███████║   ██║   ██║  ██║╚██████╔╝╚███╔███╔╝██║  ██║██╔╝ ██╗${NC}${g5}  │${NC}"
-    echo -e "${g5}    │      ${M1}╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝  ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝${NC}${g5}  │${NC}"
-    echo -e "${g2}    │                                                              │${NC}"
-    echo -e "${g2}    │              ${W1}${BOLD}✦  ASTROWAX PANEL CONTROLLER  ✦${NC}                 ${g2}│${NC}"
-    echo -e "${g1}    │           ${M1}Made by ${P2}${BOLD}Itzytansh${NC}${M1}  ·  v${SCRIPT_VERSION}  ·  Pro UI${NC}            ${g1}│${NC}"
-    echo -e "${g1}    ╰──────────────────────────────────────────────────────────────╯${NC}"
-    echo ""
-}
-
-box_top() {
-    echo -e "${P1}    ╭──────────────────────────────────────────────────────────────╮${NC}"
-}
-box_mid() {
-    echo -e "${P1}    ├──────────────────────────────────────────────────────────────┤${NC}"
-}
-box_bot() {
-    echo -e "${P1}    ╰──────────────────────────────────────────────────────────────╯${NC}"
-}
-box_empty() {
-    echo -e "${P1}    │                                                              │${NC}"
-}
-box_title() {
-    local title="$1"
-    echo -e "${P1}    │${NC}  ${W1}${BOLD}${title}${NC}"
-}
-
-log_info()    { echo -e "    ${P2}${BOLD}◆${NC}  ${W1}$1${NC}"; }
-log_success() { echo -e "    ${G1}${BOLD}✔${NC}  ${W1}$1${NC}"; }
-log_warning() { echo -e "    ${Y1}${BOLD}!${NC}  ${Y1}$1${NC}"; }
-log_error()   { echo -e "    ${R1}${BOLD}✖${NC}  ${R1}$1${NC}"; }
-log_step()    { echo -e "    ${C1}${BOLD}→${NC}  ${P3}$1${NC}"; }
-
-pause_enter() {
-    if [ -t 0 ]; then
-        echo ""
-        printf "    ${M1}Press ${W1}Enter${M1} to continue…${NC} "
-        read -r _ || true
-    fi
-}
-
-prompt_choice() {
-    local msg="$1"
-    local val=""
-    if [ -t 0 ]; then
-        printf "    ${P2}${BOLD}?${NC}  ${W1}%s${NC} " "$msg"
-        read -r val || true
-        echo "$val"
-    else
-        echo ""
-    fi
-}
-
-# ═══════════════════════════════════════════════════════════
-# HELPERS
-# ═══════════════════════════════════════════════════════════
 run_pm2() {
     if [ -x "./node_modules/.bin/pm2" ]; then ./node_modules/.bin/pm2 "$@"
-    elif command -v pm2 >/dev/null 2>&1; then pm2 "$@"
+    elif command -v pm2 &> /dev/null; then pm2 "$@"
     elif [ -x "/usr/local/bin/pm2" ]; then /usr/local/bin/pm2 "$@"
     else npx --no-install pm2 "$@" 2>/dev/null || npx pm2 "$@"; fi
 }
 
 get_docker_cmd() {
-    if docker info >/dev/null 2>&1; then echo "docker"
-    elif command -v sudo >/dev/null 2>&1 && sudo docker info >/dev/null 2>&1; then echo "sudo docker"
+    if docker info > /dev/null 2>&1; then echo "docker"
+    elif command -v sudo &> /dev/null && sudo docker info > /dev/null 2>&1; then echo "sudo docker"
     else echo "docker"; fi
-}
-
-public_ip() {
-    curl -fsS -m 2 https://ifconfig.me 2>/dev/null \
-        || curl -fsS -m 2 https://icanhazip.com 2>/dev/null \
-        || hostname -I 2>/dev/null | awk '{print $1}' \
-        || echo "localhost"
-}
-
-secure_docker_sock() {
-    if [ ! -S "/var/run/docker.sock" ]; then return 0; fi
-    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then return 0; fi
-    if id -nG 2>/dev/null | grep -qw docker; then return 0; fi
-    if command -v sudo >/dev/null 2>&1; then
-        sudo usermod -aG docker "$(whoami)" >/dev/null 2>&1 || true
-        if sudo docker info >/dev/null 2>&1; then return 0; fi
-        sudo chmod 660 /var/run/docker.sock >/dev/null 2>&1 || true
-    fi
 }
 
 find_panel_dir() {
@@ -251,8 +235,7 @@ find_panel_dir() {
        grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" 2>/dev/null; then
         echo "$(pwd)/$WORK_DIR_NAME/$PANEL_DIR_NAME"; return 0
     fi
-    local found
-    found=$(find . -maxdepth 5 -name "package.json" -not -path "*/node_modules/*" -not -path "*/dist/*" 2>/dev/null | while read -r f; do
+    local found=$(find . -maxdepth 5 -name "package.json" -not -path "*/node_modules/*" -not -path "*/dist/*" 2>/dev/null | while read f; do
         if grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" "$f" 2>/dev/null; then
             echo "$f"; break
         fi
@@ -263,101 +246,89 @@ find_panel_dir() {
     echo ""; return 1
 }
 
+# Enhanced execute_step with progress bar
 execute_step() {
     local msg="$1"; shift
-    local step_id="awp_step_$$_$RANDOM"
+    local step_id="awp_step_$RANDOM"
     local log_file="/tmp/${step_id}.log"
-    local t0 t1 elapsed
     rm -f "$log_file"
-    t0=$(date +%s)
-
-    printf "    ${P2}▶${NC}  ${W1}%-42s${NC} " "$msg"
-    "$@" >"$log_file" 2>&1 &
+    
+    printf "  ${C_PURPLE_L}▶${C_RESET} ${C_BOLD}%-45s${C_RESET} " "$msg"
+    
+    "$@" > "$log_file" 2>&1 &
     local pid=$!
-
-    if [ "$AWP_TTY" -eq 1 ]; then
-        local frames
-        if [ "$AWP_UNICODE" -eq 1 ]; then
-            frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-        else
-            frames='|/-\\'
-        fi
-        local i=0 flen=${#frames}
-        hide_cursor
-        while kill -0 "$pid" 2>/dev/null; do
-            local c="${frames:$((i % flen)):1}"
-            printf "${P2}%s${NC}" "$c"
-            sleep 0.08
-            printf '\b'
-            i=$((i + 1))
-        done
-        show_cursor
-    fi
-
+    
+    # Progress simulation
+    local duration=0
+    local max_duration=30
+    while kill -0 $pid 2>/dev/null && [ $duration -lt $max_duration ]; do
+        progress_bar $((duration % 10)) 10
+        sleep 0.5
+        duration=$((duration + 1))
+    done
+    
     local status=0
-    wait "$pid" 2>/dev/null || status=$?
-    t1=$(date +%s)
-    elapsed=$((t1 - t0))
-
-    if [ "$status" -eq 0 ]; then
-        printf "\r    ${G1}✔${NC}  ${W1}%-42s${NC} ${G1}[Done · %ss]${NC}\n" "$msg" "$elapsed"
+    wait $pid 2>/dev/null || status=$?
+    
+    printf "\r  "
+    if [ $status -eq 0 ]; then
+        echo -e "${C_GREEN}✓${C_RESET} ${C_GREEN_L}%-45s${C_RESET} [${C_GREEN_L}DONE${C_RESET}]" "$msg"
     else
-        printf "\r    ${R1}✖${NC}  ${W1}%-42s${NC} ${R1}[Fail · %ss]${NC}\n" "$msg" "$elapsed"
-        echo ""
-        echo -e "    ${R1}╭──────────────────────── STEP FAILED ────────────────────────╮${NC}"
-        echo -e "    ${R1}│${NC}  ${W1}${BOLD}$msg${NC}"
-        echo -e "    ${R1}│${NC}  ${M1}Exit code:${NC} ${Y1}$status${NC}"
+        echo -e "${C_RED}✗${C_RESET} ${C_RED_L}%-45s${C_RESET} [${C_RED_L}FAIL${C_RESET}]" "$msg"
+        echo -e "\n  ${C_RED}${C_BOLD}════════════════════════════════════════════════════${C_RESET}"
+        echo -e "  ${C_RED}${C_BOLD}  ERROR: $msg${C_RESET}"
+        echo -e "  ${C_RED}${C_BOLD}════════════════════════════════════════════════════${C_RESET}"
+        echo -e "  ${C_YELLOW}Exit code: $status${C_RESET}"
         if [ -s "$log_file" ]; then
-            echo -e "    ${R1}│${NC}  ${M1}Last output:${NC}"
-            tail -n 24 "$log_file" | sed "s/^/    ${R1}│${NC}    /"
+            echo -e "  ${C_GRAY_L}Output:${C_RESET}"
+            tail -n 20 "$log_file" | sed 's/^/    /'
         fi
-        echo -e "    ${R1}╰─────────────────────────────────────────────────────────────╯${NC}"
-        return "$status"
+        echo -e "  ${C_RED}${C_BOLD}════════════════════════════════════════════════════${C_RESET}\n"
+        return $status
     fi
     return 0
 }
 
 # ═══════════════════════════════════════════════════════════
-# SYSTEM DEPS
+# 📦 SYSTEM DEPENDENCIES
 # ═══════════════════════════════════════════════════════════
+
 check_system_deps() {
     local MISSING=""
-    local cmd
     for cmd in curl git tar unzip; do
-        command -v "$cmd" >/dev/null 2>&1 || MISSING="$MISSING $cmd"
+        command -v "$cmd" > /dev/null 2>&1 || MISSING="$MISSING $cmd"
     done
     if [ -n "$MISSING" ]; then
-        if command -v apt-get >/dev/null 2>&1; then
-            sudo apt-get update -y -q >/dev/null 2>&1 || true
-            sudo apt-get install -y $MISSING build-essential ca-certificates -q >/dev/null 2>&1 || true
-        elif command -v yum >/dev/null 2>&1; then
-            sudo yum install -y $MISSING make gcc-c++ ca-certificates unzip -q >/dev/null 2>&1 || true
-        elif command -v dnf >/dev/null 2>&1; then
-            sudo dnf install -y $MISSING make gcc-c++ ca-certificates unzip -q >/dev/null 2>&1 || true
+        if command -v apt-get > /dev/null 2>&1; then
+            sudo apt-get update -y -q > /dev/null 2>&1 || true
+            sudo apt-get install -y $MISSING build-essential ca-certificates -q > /dev/null 2>&1 || true
+        elif command -v yum > /dev/null 2>&1; then
+            sudo yum install -y $MISSING make gcc-c++ ca-certificates unzip -q > /dev/null 2>&1 || true
+        elif command -v dnf > /dev/null 2>&1; then
+            sudo dnf install -y $MISSING make gcc-c++ ca-certificates unzip -q > /dev/null 2>&1 || true
         fi
     fi
     for cmd in curl git tar unzip; do
-        command -v "$cmd" >/dev/null 2>&1 || { echo "Missing: $cmd"; return 1; }
+        command -v "$cmd" &> /dev/null || { echo "Missing: $cmd"; return 1; }
     done
     return 0
 }
 
 # ═══════════════════════════════════════════════════════════
-# DOWNLOAD
+# 📥 DOWNLOAD ENGINE
 # ═══════════════════════════════════════════════════════════
+
 download_panel_v180() {
     local archive_url="https://github.com/${GH_USER}/${GH_REPO}/raw/${GH_BRANCH}/${GH_ARCHIVE}"
     local main_archive_url="https://github.com/${GH_USER}/${GH_REPO}/archive/refs/heads/${GH_BRANCH}.zip"
-    local START_DIR
-    START_DIR=$(pwd)
+    local START_DIR=$(pwd)
 
     rm -rf "$WORK_DIR_NAME" "$GH_ARCHIVE" 2>/dev/null || true
 
-    if ! curl -fsSL --connect-timeout 15 --retry 2 "$archive_url" -o "$GH_ARCHIVE" 2>/dev/null; then
-        curl -fsSL --connect-timeout 15 --retry 2 "$main_archive_url" -o "/tmp/${GH_REPO}.zip" 2>/dev/null || return 1
+    if ! curl -fsSL "$archive_url" -o "$GH_ARCHIVE" 2>/dev/null; then
+        curl -fsSL "$main_archive_url" -o "/tmp/${GH_REPO}.zip" 2>/dev/null || return 1
         unzip -q -o "/tmp/${GH_REPO}.zip" -d /tmp/awp_extract 2>/dev/null || return 1
-        local found
-        found=$(find /tmp/awp_extract -name "$GH_ARCHIVE" -type f 2>/dev/null | head -1)
+        local found=$(find /tmp/awp_extract -name "$GH_ARCHIVE" -type f 2>/dev/null | head -1)
         [ -z "$found" ] && return 1
         cp "$found" "$GH_ARCHIVE" 2>/dev/null || return 1
         rm -rf /tmp/awp_extract "/tmp/${GH_REPO}.zip" 2>/dev/null || true
@@ -369,8 +340,7 @@ download_panel_v180() {
     unzip -q -o "$GH_ARCHIVE" -d "$WORK_DIR_NAME" 2>/dev/null || return 1
     rm -f "$GH_ARCHIVE" 2>/dev/null || true
 
-    local actual_panel
-    actual_panel=$(find "$WORK_DIR_NAME" -maxdepth 5 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | while read -r f; do
+    local actual_panel=$(find "$WORK_DIR_NAME" -maxdepth 5 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | while read f; do
         if grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" "$f" 2>/dev/null; then
             echo "$f"; break
         fi
@@ -378,8 +348,7 @@ download_panel_v180() {
 
     [ -z "$actual_panel" ] && return 1
 
-    local actual_dir
-    actual_dir=$(dirname "$actual_panel")
+    local actual_dir=$(dirname "$actual_panel")
     if [ "$actual_dir" != "$WORK_DIR_NAME/$PANEL_DIR_NAME" ]; then
         rm -rf "$WORK_DIR_NAME/$PANEL_DIR_NAME" 2>/dev/null || true
         mv "$actual_dir" "$WORK_DIR_NAME/$PANEL_DIR_NAME" 2>/dev/null || return 1
@@ -389,15 +358,16 @@ download_panel_v180() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# DOCKER / NODE / JAVA
+# 🐳 DOCKER & RUNTIME
 # ═══════════════════════════════════════════════════════════
+
 install_docker() {
-    if ! command -v docker >/dev/null 2>&1; then
-        curl -fsSL https://get.docker.com | sh >/dev/null 2>&1 || true
-        if command -v systemctl >/dev/null 2>&1; then
-            sudo systemctl enable --now docker >/dev/null 2>&1 || true
-        elif command -v service >/dev/null 2>&1; then
-            sudo service docker start >/dev/null 2>&1 || true
+    if ! command -v docker &> /dev/null; then
+        curl -fsSL https://get.docker.com | sh > /dev/null 2>&1 || true
+        if command -v systemctl &> /dev/null; then
+            sudo systemctl enable --now docker > /dev/null 2>&1 || true
+        elif command -v service &> /dev/null; then
+            sudo service docker start > /dev/null 2>&1 || true
         fi
     fi
     [ -x "$(command -v docker)" ] && return 0
@@ -410,49 +380,53 @@ install_node() {
     [ -s "/usr/local/share/nvm/nvm.sh" ] && { export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh"; }
 
     if ! command -v nvm >/dev/null 2>&1; then
-        curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash >/dev/null 2>&1 || true
+        curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash > /dev/null 2>&1 || true
         export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
         [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
         [ -s "/usr/local/share/nvm/nvm.sh" ] && { export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh"; }
     fi
 
     if command -v nvm >/dev/null 2>&1; then
-        nvm install 20 >/dev/null 2>&1 || true
-        nvm use 20 >/dev/null 2>&1 || true
-        nvm alias default 20 >/dev/null 2>&1 || true
+        nvm install 20 > /dev/null 2>&1 || true
+        nvm use 20 > /dev/null 2>&1 || true
+        nvm alias default 20 > /dev/null 2>&1 || true
     fi
 
-    if ! command -v node >/dev/null 2>&1; then
-        if command -v apt-get >/dev/null 2>&1; then
-            curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - >/dev/null 2>&1 || true
-            sudo apt-get install -y nodejs >/dev/null 2>&1 || true
+    if ! command -v node &> /dev/null; then
+        if command -v apt-get &> /dev/null; then
+            curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - > /dev/null 2>&1 || true
+            sudo apt-get install -y nodejs > /dev/null 2>&1 || true
         fi
     fi
 
-    command -v node >/dev/null 2>&1 || { echo "Node failed"; return 1; }
+    command -v node &> /dev/null || { echo "Node failed"; return 1; }
     echo "Node: $(node -v)"
-    command -v npm >/dev/null 2>&1 || return 1
+    command -v npm &> /dev/null || return 1
     return 0
 }
 
 install_java() {
-    if command -v java >/dev/null 2>&1 && java -version >/dev/null 2>&1; then
+    if command -v java > /dev/null 2>&1 && java -version > /dev/null 2>&1; then
         return 0
     fi
-    if command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update -y -q >/dev/null 2>&1 || true
-        sudo apt-get install -y -q openjdk-21-jre-headless >/dev/null 2>&1 || \
-        sudo apt-get install -y -q openjdk-17-jre-headless >/dev/null 2>&1 || true
+    if command -v apt-get > /dev/null 2>&1; then
+        sudo apt-get update -y -q > /dev/null 2>&1 || true
+        sudo apt-get install -y -q openjdk-21-jre-headless > /dev/null 2>&1 || \
+        sudo apt-get install -y -q openjdk-17-jre-headless > /dev/null 2>&1 || true
     fi
     return 0
 }
+
+# ═══════════════════════════════════════════════════════════
+# ⚡ NODE ENVIRONMENT SETUP
+# ═══════════════════════════════════════════════════════════
 
 setup_node_env() {
     local RUNTIME_PREF=$1
     install_node
 
-    if ! command -v pm2 >/dev/null 2>&1 && [ ! -x "/usr/local/bin/pm2" ] && [ ! -x "./node_modules/.bin/pm2" ]; then
-        sudo npm install -g pm2 >/dev/null 2>&1 || npm install -g pm2 >/dev/null 2>&1 || true
+    if ! command -v pm2 &> /dev/null && [ ! -x "/usr/local/bin/pm2" ] && [ ! -x "./node_modules/.bin/pm2" ]; then
+        sudo npm install -g pm2 > /dev/null 2>&1 || npm install -g pm2 > /dev/null 2>&1 || true
     fi
 
     local DEFAULT_RT="docker"
@@ -462,13 +436,15 @@ setup_node_env() {
         DEFAULT_RT="local"
         ENABLE_DOCKER="false"
     else
-        if ! command -v docker >/dev/null 2>&1; then
+        if ! command -v docker &> /dev/null; then
             install_docker 2>/dev/null || true
         fi
-        if command -v systemctl >/dev/null 2>&1; then
+        if command -v systemctl &> /dev/null; then
             systemctl enable --now docker 2>/dev/null || sudo systemctl enable --now docker 2>/dev/null || true
         fi
-        secure_docker_sock
+        if [ -S "/var/run/docker.sock" ]; then
+            chmod 666 /var/run/docker.sock 2>/dev/null || sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
+        fi
     fi
 
     cat << EOF2 > ecosystem.config.cjs
@@ -495,18 +471,22 @@ module.exports = {
 EOF2
 }
 
+# ═══════════════════════════════════════════════════════════
+# 📦 DEPENDENCIES & BUILD
+# ═══════════════════════════════════════════════════════════
+
 install_dependencies() {
     [ -f "package.json" ] || return 1
 
     if ! grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" package.json 2>/dev/null; then
-        echo "Wrong package.json"
+        echo "❌ Wrong package.json"
         head -3 package.json | sed 's/^/   /'
         return 1
     fi
 
     [ -f ".npmrc" ] || echo "legacy-peer-deps=true" > .npmrc
     rm -rf node_modules package-lock.json 2>/dev/null || true
-    npm cache clean --force >/dev/null 2>&1 || true
+    npm cache clean --force > /dev/null 2>&1 || true
     npm install --legacy-peer-deps --no-audit --no-fund 2>&1 | tail -5
 }
 
@@ -514,7 +494,7 @@ build_application() {
     [ -f "package.json" ] || return 1
 
     if ! grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" package.json 2>/dev/null; then
-        echo "Wrong package.json"; return 1
+        echo "❌ Wrong package.json"; return 1
     fi
 
     rm -rf dist 2>/dev/null || true
@@ -525,30 +505,27 @@ build_application() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# STOP / START / RESTART
+# 🎮 PANEL CONTROL
 # ═══════════════════════════════════════════════════════════
+
 stop_panel() {
     print_banner
-    box_top
-    echo -e "${P1}    │${NC}  ${W1}${BOLD}STOPPING ASTROWAX PANEL${NC}"
-    box_bot
-    echo ""
-
+    print_header "STOPPING ASTROWAX PANEL" "Gracefully shutting down services..."
+    
     run_pm2 delete "$MAIN_PROCESS" 2>/dev/null || true
     run_pm2 delete astrowax-panel 2>/dev/null || true
-    local DOCKER_CLI
-    DOCKER_CLI=$(get_docker_cmd)
-    $DOCKER_CLI rm -f "$MAIN_CONTAINER" 2>/dev/null || true
+    local DOCKER_CLI=$(get_docker_cmd)
+    $DOCKER_CLI rm -f $MAIN_CONTAINER 2>/dev/null || true
     pkill -f "node.*dist/server.cjs" 2>/dev/null || true
 
-    log_success "Panel stopped cleanly."
+    log_success "All services stopped successfully"
     echo ""
     show_status
 }
 
 start_panel_node() {
     local TARGET=$1
-    if command -v fuser >/dev/null 2>&1; then
+    if command -v fuser &> /dev/null; then
         fuser -k ${MAIN_PORT}/tcp 2>/dev/null || true
     fi
     pkill -f "node.*server.cjs" 2>/dev/null || true
@@ -556,10 +533,12 @@ start_panel_node() {
     run_pm2 delete "$TARGET" 2>/dev/null || true
     run_pm2 delete astrowax-panel 2>/dev/null || true
 
-    if command -v systemctl >/dev/null 2>&1; then
+    if command -v systemctl &> /dev/null; then
         systemctl enable --now docker 2>/dev/null || sudo systemctl enable --now docker 2>/dev/null || true
     fi
-    secure_docker_sock
+    if [ -S "/var/run/docker.sock" ]; then
+        chmod 666 /var/run/docker.sock 2>/dev/null || sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
+    fi
 
     run_pm2 start ecosystem.config.cjs --only "$TARGET"
     run_pm2 save --force 2>/dev/null || true
@@ -567,15 +546,11 @@ start_panel_node() {
 
 start_panel() {
     print_banner
-    box_top
-    echo -e "${P1}    │${NC}  ${W1}${BOLD}STARTING ASTROWAX PANEL${NC}"
-    box_bot
-    echo ""
-
-    local PANEL_PATH
-    PANEL_PATH=$(find_panel_dir)
+    print_header "STARTING ASTROWAX PANEL" "Initializing services..."
+    
+    local PANEL_PATH=$(find_panel_dir)
     if [ -z "$PANEL_PATH" ]; then
-        log_error "Panel not found. Install first."
+        log_error "Panel not found. Please install first."
         return 1
     fi
     cd "$PANEL_PATH" || return 1
@@ -588,14 +563,14 @@ start_panel() {
         build_application
     fi
 
-    log_step "Launching PM2 process…"
+    log_step "Starting PM2 process manager..."
     start_panel_node "$MAIN_PROCESS"
 
-    log_step "Waiting for HTTP health check…"
+    log_step "Waiting for panel to become responsive..."
     local ATTEMPTS=0
     while [ $ATTEMPTS -lt 15 ]; do
-        if curl -s -f -m 2 "http://127.0.0.1:${MAIN_PORT}/" >/dev/null 2>&1; then
-            log_success "Panel is live."
+        if curl -s -f "http://127.0.0.1:${MAIN_PORT}/" >/dev/null 2>&1; then
+            log_success "Panel is now ONLINE and accessible!"
             show_status
             return 0
         fi
@@ -603,20 +578,16 @@ start_panel() {
         ATTEMPTS=$((ATTEMPTS + 1))
     done
 
-    log_error "Panel didn't start. Recent logs:"
+    log_error "Panel failed to start. Debugging logs:"
     run_pm2 logs "$MAIN_PROCESS" --lines 30 --nostream 2>&1 || true
     return 1
 }
 
 restart_panel() {
     print_banner
-    box_top
-    echo -e "${P1}    │${NC}  ${W1}${BOLD}RESTARTING ASTROWAX PANEL${NC}"
-    box_bot
-    echo ""
-
-    local PANEL_PATH
-    PANEL_PATH=$(find_panel_dir)
+    print_header "RESTARTING ASTROWAX PANEL" "Refreshing services..."
+    
+    local PANEL_PATH=$(find_panel_dir)
     if [ -z "$PANEL_PATH" ]; then
         log_error "Panel not found."
         return 1
@@ -627,146 +598,155 @@ restart_panel() {
     run_pm2 save --force 2>/dev/null || true
     sleep 3
 
-    if curl -s -f -m 2 "http://127.0.0.1:${MAIN_PORT}/" >/dev/null 2>&1; then
-        log_success "Panel restarted."
+    if curl -s -f "http://127.0.0.1:${MAIN_PORT}/" >/dev/null 2>&1; then
+        log_success "Panel restarted successfully"
         show_status
         return 0
     fi
-    log_error "Restart failed."
+    log_error "Restart failed"
     run_pm2 logs "$MAIN_PROCESS" --lines 30 --nostream 2>&1 || true
     return 1
 }
 
 # ═══════════════════════════════════════════════════════════
-# STATUS
+# 📊 STATUS DASHBOARD
 # ═══════════════════════════════════════════════════════════
+
 show_status() {
     local MAIN_STATUS="OFFLINE"
     local SFTP_STATUS="OFFLINE"
     local VERSION_LABEL="${SELECTED_VERSION:-1.80}"
-    local NODE_VER="—"
-    local PM2_STATE="—"
-    command -v node >/dev/null 2>&1 && NODE_VER="$(node -v 2>/dev/null || echo —)"
+    local STATUS_COLOR="$C_RED"
 
     if (run_pm2 list 2>/dev/null | grep "$MAIN_PROCESS" | grep -q "online") || \
        curl -s -m 2 http://127.0.0.1:${MAIN_PORT}/ >/dev/null 2>&1; then
         MAIN_STATUS="ONLINE"
+        STATUS_COLOR="$C_GREEN_L"
     fi
     [ "$MAIN_STATUS" = "ONLINE" ] && SFTP_STATUS="ONLINE"
 
-    if run_pm2 list 2>/dev/null | grep -q "$MAIN_PROCESS"; then
-        PM2_STATE=$(run_pm2 list 2>/dev/null | grep "$MAIN_PROCESS" | awk '{print $10}' | head -1)
-        [ -z "$PM2_STATE" ] && PM2_STATE="managed"
-    fi
-
-    local IP
-    IP=$(public_ip)
-    IP=$(echo "$IP" | tr -d '\r\n ')
+    local IP=$(curl -s -m 2 ifconfig.me 2>/dev/null || curl -s -m 2 icanhazip.com 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
 
     echo ""
-    echo -e "${P1}    ╭──────────────────────────────────────────────────────────────╮${NC}"
-    echo -e "${P1}    │${NC}          ${W1}${BOLD}ASTROWAX PANEL  v${VERSION_LABEL}${NC}  ${M1}STATUS BOARD${NC}           ${P1}│${NC}"
-    echo -e "${P1}    ├──────────────────────────────────────────────────────────────┤${NC}"
-    echo -e "${P1}    │${NC}                                                              ${P1}│${NC}"
+    echo -e "${C_PURPLE_L}${C_BOLD}    ╔═══════════════════════════════════════════════════════════╗${C_RESET}"
+    echo -e "${C_PURPLE_L}${C_BOLD}    ║${C_RESET}         ${C_CYAN_L}${C_BOLD}ASTROWAX PANEL STATUS DASHBOARD${C_RESET}${C_PURPLE_L}${C_BOLD}           ║${C_RESET}"
+    echo -e "${C_PURPLE_L}${C_BOLD}    ╠═══════════════════════════════════════════════════════════╣${C_RESET}"
+    echo -e "${C_PURPLE_L}${C_BOLD}    ║${C_RESET}                                                           ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "${C_PURPLE_L}${C_BOLD}    ║${C_RESET}  ${C_DIM}Version:${C_RESET} ${C_WHITE}v${VERSION_LABEL}${C_RESET}                                        ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "${C_PURPLE_L}${C_BOLD}    ║${C_RESET}  ${C_DIM}Author:${C_RESET} ${C_YELLOW}Itzytansh${C_RESET}                                      ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "${C_PURPLE_L}${C_BOLD}    ║${C_RESET}                                                           ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "${C_PURPLE_L}${C_BOLD}    ║${C_RESET}  ${C_DIM}Main Panel:${C_RESET}  [${STATUS_COLOR}${MAIN_STATUS}${C_RESET}]                          ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    
     if [ "$MAIN_STATUS" = "ONLINE" ]; then
-        echo -e "${P1}    │${NC}   ${W1}Main Panel${NC}        ${G1}● ONLINE${NC}                                 ${P1}│${NC}"
-        echo -e "${P1}    │${NC}                     ${C1}http://${IP}:${MAIN_PORT}${NC}"
+        echo -e "${C_PURPLE_L}${C_BOLD}    ║${C_RESET}               ${C_CYAN_L}http://${IP}:${MAIN_PORT}${C_RESET}                         ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
     else
-        echo -e "${P1}    │${NC}   ${W1}Main Panel${NC}        ${R1}○ OFFLINE${NC}                                ${P1}│${NC}"
+        echo -e "${C_PURPLE_L}${C_BOLD}    ║${C_RESET}               ${C_GRAY}Not Running${C_RESET}                                  ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
     fi
-    echo -e "${P1}    │${NC}                                                              ${P1}│${NC}"
+    
+    echo -e "${C_PURPLE_L}${C_BOLD}    ║${C_RESET}                                                           ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    
     if [ "$SFTP_STATUS" = "ONLINE" ]; then
-        echo -e "${P1}    │${NC}   ${W1}SFTP Service${NC}      ${G1}● ONLINE${NC}  ${M1}port ${SFTP_PORT}${NC}                      ${P1}│${NC}"
+        echo -e "${C_PURPLE_L}${C_BOLD}    ║${C_RESET}  ${C_DIM}SFTP Service:${C_RESET} [${C_GREEN_L}ONLINE${C_RESET}]  Port ${SFTP_PORT}                 ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
     else
-        echo -e "${P1}    │${NC}   ${W1}SFTP Service${NC}      ${R1}○ OFFLINE${NC}                                ${P1}│${NC}"
+        echo -e "${C_PURPLE_L}${C_BOLD}    ║${C_RESET}  ${C_DIM}SFTP Service:${C_RESET} [${C_RED}OFFLINE${C_RESET}]                              ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
     fi
-    echo -e "${P1}    │${NC}                                                              ${P1}│${NC}"
-    echo -e "${P1}    │${NC}   ${M1}Node${NC}  ${W1}${NODE_VER}${NC}   ${M1}PM2${NC}  ${W1}${PM2_STATE}${NC}   ${M1}Port${NC}  ${W1}${MAIN_PORT}${NC}"
-    echo -e "${P1}    │${NC}                                                              ${P1}│${NC}"
-    echo -e "${P1}    ╰──────────────────────────────────────────────────────────────╯${NC}"
+    
+    echo -e "${C_PURPLE_L}${C_BOLD}    ║${C_RESET}                                                           ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "${C_PURPLE_L}${C_BOLD}    ╚═══════════════════════════════════════════════════════════╝${C_RESET}"
     echo ""
 }
 
 # ═══════════════════════════════════════════════════════════
-# VERSION SELECTOR
+# 🎯 VERSION SELECTOR
 # ═══════════════════════════════════════════════════════════
+
 choose_version() {
     print_banner
-    echo -e "${P1}    ╭──────────────────────────────────────────────────────────────╮${NC}"
-    echo -e "${P1}    │${NC}  ${W1}${BOLD}SELECT PANEL VERSION${NC}                                        ${P1}│${NC}"
-    echo -e "${P1}    ├──────────────────────────────────────────────────────────────┤${NC}"
-    echo -e "${P1}    │${NC}                                                              ${P1}│${NC}"
-    echo -e "${P1}    │${NC}    ${P2}${BOLD}[1]${NC}  ${W1}AstroWax Panel V1.80${NC}                                 ${P1}│${NC}"
-    echo -e "${P1}    │${NC}         ${M1}Latest  ·  Node 20 + PM2 + Docker${NC}                    ${P1}│${NC}"
-    echo -e "${P1}    │${NC}                                                              ${P1}│${NC}"
-    echo -e "${P1}    │${NC}    ${P2}${BOLD}[2]${NC}  ${W1}AstroWax Panel V1.0${NC}  ${M1}(Legacy)${NC}                        ${P1}│${NC}"
-    echo -e "${P1}    │${NC}         ${M1}Classic  ·  Node 20 + SQLite${NC}                         ${P1}│${NC}"
-    echo -e "${P1}    │${NC}                                                              ${P1}│${NC}"
-    echo -e "${P1}    │${NC}    ${P2}${BOLD}[3]${NC}  ${M1}Back${NC}                                                 ${P1}│${NC}"
-    echo -e "${P1}    │${NC}                                                              ${P1}│${NC}"
-    echo -e "${P1}    ╰──────────────────────────────────────────────────────────────╯${NC}"
+    print_header "SELECT PANEL VERSION" "Choose your deployment target"
+    
+    echo -e "    ${C_PURPLE_L}┌─────────────────────────────────────────────────────────────┐${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}  ${C_CYAN_L}[1]${C_RESET} ${C_BOLD}AstroWax Panel V1.80${C_RESET} (Latest)                        ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}      ${C_GRAY_L}• Node 20 + PM2 + Docker${C_RESET}                                ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}      ${C_GRAY_L}• Production Ready${C_RESET}                                      ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}                                                           ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}  ${C_CYAN_L}[2]${C_RESET} ${C_BOLD}AstroWax Panel V1.0${C_RESET} (Legacy)                         ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}      ${C_GRAY_L}• Classic SQLite${C_RESET}                                        ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}      ${C_GRAY_L}• Lightweight${C_RESET}                                          ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}                                                           ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}  ${C_RED_L}[3]${C_RESET} ${C_DIM}Back to Menu${C_RESET}                                         ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}└─────────────────────────────────────────────────────────────┘${C_RESET}"
     echo ""
 
     local vc=""
-    if [ -n "${VERSION_CHOICE:-}" ]; then vc="$VERSION_CHOICE"
+    if [ -n "$VERSION_CHOICE" ]; then vc="$VERSION_CHOICE"
     elif [ ! -t 0 ]; then vc="1"
-    else vc=$(prompt_choice "Choose (1-3):"); fi
+    else 
+        echo -ne "    ${C_CYAN}➜${C_RESET} Enter choice [1-3]: "
+        read -r vc
+    fi
 
     case "$vc" in
-        1) SELECTED_VERSION="1.80"; log_success "Selected: V1.80" ;;
-        2) SELECTED_VERSION="1.0"; log_success "Selected: V1.0" ;;
+        1) SELECTED_VERSION="1.80"; log_success "Selected: V1.80 (Latest)" ;;
+        2) SELECTED_VERSION="1.0"; log_success "Selected: V1.0 (Legacy)" ;;
         3) return 1 ;;
-        *) log_error "Invalid selection."; return 1 ;;
+        *) log_error "Invalid selection"; return 1 ;;
     esac
     echo ""
-    sleep 0.4
+    sleep 0.5
     return 0
 }
 
 # ═══════════════════════════════════════════════════════════
-# INSTALL V1.80
+# 🚀 INSTALLATION ENGINE V1.80
 # ═══════════════════════════════════════════════════════════
+
 install_panel_v180() {
     print_banner
 
-    local PANEL_PATH
-    PANEL_PATH=$(find_panel_dir)
+    local PANEL_PATH=$(find_panel_dir)
 
     if [ -z "$PANEL_PATH" ]; then
-        box_top
-        echo -e "${P1}    │${NC}  ${W1}${BOLD}DOWNLOADING PANEL V1.80${NC}"
-        box_bot
-        echo ""
+        print_header "DOWNLOADING PANEL V1.80" "Fetching latest release from GitHub..."
         execute_step "Downloading AstroWax Panel V1.80" download_panel_v180 || { log_error "Download failed."; exit 1; }
         PANEL_PATH="$WORK_DIR_NAME/$PANEL_DIR_NAME"
     fi
 
     cd "$PANEL_PATH" || { log_error "Cannot enter panel directory."; exit 1; }
-    log_info "Working dir: ${C1}$(pwd)${NC}"
+    log_info "Working directory: $(pwd)"
 
     if ! grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" package.json 2>/dev/null; then
-        log_error "Wrong package.json"; exit 1
+        log_error "Invalid package.json detected"
+        exit 1
     fi
-    log_success "package.json verified"
+    log_success "Package verified successfully"
     echo ""
 
-    echo -e "${P1}    ╭──────────────────────────────────────────────────────────────╮${NC}"
-    echo -e "${P1}    │${NC}  ${W1}${BOLD}SELECT INSTALLATION MODE${NC}                                    ${P1}│${NC}"
-    echo -e "${P1}    ├──────────────────────────────────────────────────────────────┤${NC}"
-    echo -e "${P1}    │${NC}    ${P2}${BOLD}[1]${NC}  ${W1}Node.js + PM2${NC}  ${G1}Recommended${NC}                           ${P1}│${NC}"
-    echo -e "${P1}    │${NC}    ${P2}${BOLD}[2]${NC}  ${W1}Pure Local Node.js${NC}                                   ${P1}│${NC}"
-    echo -e "${P1}    │${NC}    ${P2}${BOLD}[3]${NC}  ${M1}Back${NC}                                                 ${P1}│${NC}"
-    echo -e "${P1}    ╰──────────────────────────────────────────────────────────────╯${NC}"
-    echo ""
+    print_header "SELECT INSTALLATION MODE" "Choose your runtime environment"
+    
+    echo -e "    ${C_PURPLE_L}┌─────────────────────────────────────────────────────────────┐${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}  ${C_CYAN_L}[1]${C_RESET} ${C_BOLD}Node.js + PM2 + Docker${C_RESET} (Recommended)               ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}      ${C_GRAY_L}• Full containerization support${C_RESET}                       ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}      ${C_GRAY_L}• Production optimized${C_RESET}                                ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}                                                           ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}  ${C_CYAN_L}[2]${C_RESET} ${C_BOLD}Pure Local Node.js${C_RESET}                                  ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}      ${C_GRAY_L}• Lightweight deployment${C_RESET}                              ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}      ${C_GRAY_L}• No Docker required${C_RESET}                                 ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}                                                           ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}  ${C_RED_L}[3]${C_RESET} ${C_DIM}Back${C_RESET}                                               ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}└─────────────────────────────────────────────────────────────┘${C_RESET}"
 
     local MODE_CHOICE=""
-    if [ -n "${RUN_CHOICE:-}" ]; then MODE_CHOICE="$RUN_CHOICE"
+    if [ -n "$RUN_CHOICE" ]; then MODE_CHOICE="$RUN_CHOICE"
     elif [ ! -t 0 ]; then MODE_CHOICE="1"
-    else MODE_CHOICE=$(prompt_choice "Choose (1-3):"); fi
+    else 
+        echo -ne "    ${C_CYAN}➜${C_RESET} Enter choice [1-3]: "
+        read -r MODE_CHOICE
+    fi
 
     [ "$MODE_CHOICE" = "3" ] && return 1
     if [ "$MODE_CHOICE" != "1" ] && [ "$MODE_CHOICE" != "2" ]; then
-        log_error "Invalid."; return 1
+        log_error "Invalid selection"
+        return 1
     fi
 
     mkdir -p .data backups
@@ -779,33 +759,30 @@ install_panel_v180() {
         fi
     fi
 
-    print_banner
-    box_top
-    echo -e "${P1}    │${NC}  ${W1}${BOLD}INSTALLING V1.80${NC}  ${M1}high-performance pipeline${NC}"
-    box_bot
+    print_header "INSTALLING V1.80" "Setting up production environment..."
     echo ""
 
-    execute_step "System Requirement Check" check_system_deps
+    execute_step "System Requirements Check" check_system_deps
     execute_step "Java Runtime Environment" install_java
 
     local RUNTIME_ARG="docker"
     [ "$MODE_CHOICE" = "2" ] && RUNTIME_ARG="local"
 
-    execute_step "Node.js Configuration (v20)" setup_node_env "$RUNTIME_ARG"
+    execute_step "Node.js v20 Configuration" setup_node_env "$RUNTIME_ARG"
     execute_step "Installing Dependencies" install_dependencies
     execute_step "Building Application" build_application
     execute_step "Starting PM2 Service" start_panel_node "$MAIN_PROCESS"
 
-    log_step "Waiting for panel to respond…"
+    log_step "Waiting for panel initialization..."
     local ATTEMPTS=0
     local OK=0
     while [ $ATTEMPTS -lt 30 ]; do
-        if curl -s -f -m 2 "http://127.0.0.1:${MAIN_PORT}/" >/dev/null 2>&1; then
+        if curl -s -f "http://127.0.0.1:${MAIN_PORT}/" >/dev/null 2>&1; then
             OK=1
             break
         fi
         if run_pm2 list 2>/dev/null | grep "$MAIN_PROCESS" | grep -qE "errored|stopped"; then
-            log_error "PM2 process crashed."
+            log_error "PM2 process crashed during startup"
             run_pm2 logs "$MAIN_PROCESS" --lines 40 --nostream 2>&1 || true
             return 1
         fi
@@ -814,100 +791,99 @@ install_panel_v180() {
     done
 
     if [ "$OK" != "1" ]; then
-        log_error "Panel failed to start in time."
+        log_error "Panel failed to start within timeout"
         run_pm2 logs "$MAIN_PROCESS" --lines 40 --nostream 2>&1 || true
         return 1
     fi
 
-    log_success "Panel is ONLINE."
+    log_success "Panel is ONLINE and operational!"
     show_status
 
-    local IP
-    IP=$(public_ip)
-    IP=$(echo "$IP" | tr -d '\r\n ')
+    local IP=$(curl -s -m 2 ifconfig.me 2>/dev/null || curl -s -m 2 icanhazip.com 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
 
-    echo -e "${G1}    ╭──────────────────────────────────────────────────────────────╮${NC}"
-    echo -e "${G1}    │${NC}  ${W1}${BOLD}INSTALLATION COMPLETE${NC}                                       ${G1}│${NC}"
-    echo -e "${G1}    ╰──────────────────────────────────────────────────────────────╯${NC}"
+    echo -e "${C_GREEN_L}${C_BOLD}    ╔═══════════════════════════════════════════════════════════╗${C_RESET}"
+    echo -e "${C_GREEN_L}${C_BOLD}    ║${C_RESET}           ${C_WHITE}${C_BOLD}🎉 INSTALLATION COMPLETE${C_RESET}${C_GREEN_L}${C_BOLD}                      ║${C_RESET}"
+    echo -e "${C_GREEN_L}${C_BOLD}    ╚═══════════════════════════════════════════════════════════╝${C_RESET}"
     echo ""
-    echo -e "    ${M1}Panel URL${NC}   ${C1}http://${IP}:${MAIN_PORT}${NC}"
-    echo -e "    ${M1}Register${NC}    ${C1}http://${IP}:${MAIN_PORT}/register${NC}"
-    echo -e "    ${M1}Version${NC}     ${P2}AstroWax Panel V1.80${NC}"
+    echo -e "    ${C_WHITE}${C_BOLD}Panel URL${C_RESET}    : ${C_CYAN_L}http://${IP}:${MAIN_PORT}${C_RESET}"
+    echo -e "    ${C_WHITE}${C_BOLD}Register${C_RESET}     : ${C_CYAN_L}http://${IP}:${MAIN_PORT}/register${C_RESET}"
+    echo -e "    ${C_WHITE}${C_BOLD}Version${C_RESET}      : ${C_PURPLE_L}AstroWax Panel V1.80${C_RESET}"
     echo ""
-    echo -e "    ${Y1}First user to register becomes OWNER automatically.${NC}"
+    echo -e "    ${C_YELLOW}⚡ First user to register becomes OWNER automatically${C_RESET}"
     echo ""
-    echo -e "    ${M1}Made by ${P2}${BOLD}Itzytansh${NC}"
+    echo -e "    ${C_GRAY_L}Made with ❤️  by ${C_YELLOW}Itzytansh${C_RESET}"
     echo ""
 }
 
 # ═══════════════════════════════════════════════════════════
-# INSTALL V1.0
+# 📦 LEGACY V1.0 INSTALLER
 # ═══════════════════════════════════════════════════════════
+
 install_panel_v10() {
     print_banner
-    echo -e "${P1}    ╭──────────────────────────────────────────────────────────────╮${NC}"
-    echo -e "${P1}    │${NC}  ${W1}${BOLD}INSTALLING V1.0 (Legacy)${NC}                                    ${P1}│${NC}"
-    echo -e "${P1}    ├──────────────────────────────────────────────────────────────┤${NC}"
-    echo -e "${P1}    │${NC}    ${P2}${BOLD}[1]${NC}  ${W1}Panel only${NC}                                           ${P1}│${NC}"
-    echo -e "${P1}    │${NC}    ${P2}${BOLD}[2]${NC}  ${W1}Node Daemon only${NC}                                     ${P1}│${NC}"
-    echo -e "${P1}    │${NC}    ${P2}${BOLD}[3]${NC}  ${W1}BOTH (Panel + Node Daemon)${NC}                           ${P1}│${NC}"
-    echo -e "${P1}    │${NC}    ${P2}${BOLD}[4]${NC}  ${M1}Back${NC}                                                 ${P1}│${NC}"
-    echo -e "${P1}    ╰──────────────────────────────────────────────────────────────╯${NC}"
-    echo ""
+    print_header "INSTALLING V1.0 (LEGACY)" "Classic deployment mode"
+    
+    echo -e "    ${C_PURPLE_L}┌─────────────────────────────────────────────────────────────┐${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}  ${C_CYAN_L}[1]${C_RESET} ${C_BOLD}Panel Only${C_RESET}                                         ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}  ${C_CYAN_L}[2]${C_RESET} ${C_BOLD}Node Daemon Only${C_RESET}                                   ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}  ${C_CYAN_L}[3]${C_RESET} ${C_BOLD}BOTH (Panel + Daemon)${C_RESET}                            ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}│${C_RESET}  ${C_RED_L}[4]${C_RESET} ${C_DIM}Back${C_RESET}                                               ${C_PURPLE_L}│${C_RESET}"
+    echo -e "    ${C_PURPLE_L}└─────────────────────────────────────────────────────────────┘${C_RESET}"
 
     local V1_CHOICE=""
-    if [ -n "${V1_INSTALL_CHOICE:-}" ]; then V1_CHOICE="$V1_INSTALL_CHOICE"
+    if [ -n "$V1_INSTALL_CHOICE" ]; then V1_CHOICE="$V1_INSTALL_CHOICE"
     elif [ ! -t 0 ]; then V1_CHOICE="3"
-    else V1_CHOICE=$(prompt_choice "Choose (1-4):"); fi
+    else 
+        echo -ne "    ${C_CYAN}➜${C_RESET} Enter choice [1-4]: "
+        read -r V1_CHOICE
+    fi
 
     case "$V1_CHOICE" in
         1) install_v10_panel ;;
         2) install_v10_node_daemon ;;
         3) install_v10_panel; echo ""; install_v10_node_daemon ;;
         4) return 0 ;;
-        *) log_error "Invalid."; return 1 ;;
+        *) log_error "Invalid selection"; return 1 ;;
     esac
 }
 
 install_v10_panel() {
     echo ""
-    log_step "Installing Panel V1.0…"
+    log_step "Installing Panel V1.0..."
     echo ""
     bash -c 'set -e; export DEBIAN_FRONTEND=noninteractive; sudo apt-get update -y && sudo apt-get install -y curl git unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config libsqlite3-dev sqlite3 && (command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash) && export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"; [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh"; nvm install 20 && nvm use 20 && rm -rf ~/AstroWax-Panel && git clone https://github.com/AstroVoidHostDev/AstroWax-Panel ~/AstroWax-Panel && cd ~/AstroWax-Panel && unzip -oq panel.zip && cd panel && rm -rf node_modules package-lock.json && npm cache clean --force && npm install --legacy-peer-deps && npm install connect-sqlite3 sqlite3 && npm run seed && npm run createUser'
-    log_success "V1.0 Panel installed"
+    log_success "V1.0 Panel installed successfully"
     echo ""
-    echo -e "    ${M1}Run:${NC}  ${C1}cd ~/AstroWax-Panel/panel && node .${NC}"
+    echo -e "    ${C_WHITE}Run:${C_RESET} ${C_CYAN_L}cd ~/AstroWax-Panel/panel && node .${C_RESET}"
     echo ""
 }
 
 install_v10_node_daemon() {
     echo ""
-    log_step "Installing Node Daemon V1.0…"
+    log_step "Installing Node Daemon V1.0..."
     echo ""
     bash -c 'set -e; export DEBIAN_FRONTEND=noninteractive; sudo apt-get update -y && sudo apt-get install -y curl git zip unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config && (command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash) && export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"; [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh"; nvm install 20 && nvm use 20 && rm -rf ~/WaxDaemon && git clone https://github.com/AstroVoidHostDev/WaxDaemon ~/WaxDaemon && cd ~/WaxDaemon && unzip -oq waxdaemon.zip && cd daemon/daemon && [ -f index.js.txt ] && mv index.js.txt index.js || true && rm -rf node_modules package-lock.json && npm cache clean --force && npm install --legacy-peer-deps'
-    log_success "Node Daemon installed"
+    log_success "Node Daemon installed successfully"
     echo ""
-    echo -e "    ${M1}Run:${NC}  ${C1}cd ~/WaxDaemon/daemon/daemon && node .${NC}"
+    echo -e "    ${C_WHITE}Run:${C_RESET} ${C_CYAN_L}cd ~/WaxDaemon/daemon/daemon && node .${C_RESET}"
     echo ""
 }
 
 # ═══════════════════════════════════════════════════════════
-# UPDATE
+# 🔄 UPDATE ENGINE
 # ═══════════════════════════════════════════════════════════
+
 update_panel() {
     print_banner
-    box_top
-    echo -e "${P1}    │${NC}  ${W1}${BOLD}UPDATING ASTROWAX PANEL${NC}"
-    box_bot
-    echo ""
-
-    local PANEL_PATH
-    PANEL_PATH=$(find_panel_dir)
+    print_header "UPDATING ASTROWAX PANEL" "Fetching latest version..."
+    
+    local PANEL_PATH=$(find_panel_dir)
     if [ -z "$PANEL_PATH" ]; then
-        log_error "Panel not installed."; return 1
+        log_error "Panel not installed. Please install first."
+        return 1
     fi
     cd "$PANEL_PATH" || return 1
-    log_info "Updating: ${C1}$(pwd)${NC}"
+    log_info "Updating installation at: $(pwd)"
     echo ""
 
     local archive_url="https://github.com/${GH_USER}/${GH_REPO}/raw/${GH_BRANCH}/${GH_ARCHIVE}"
@@ -915,33 +891,32 @@ update_panel() {
     local new_dir="${temp_dir}/new"
     mkdir -p "$new_dir" || return 1
 
-    if ! curl -fsSL --connect-timeout 15 --retry 2 "$archive_url" -o "/tmp/awp_update.zip" 2>/dev/null; then
-        log_error "Download failed."
+    if ! curl -fsSL "$archive_url" -o "/tmp/awp_update.zip" 2>/dev/null; then
+        log_error "Download failed"
         rm -rf "$temp_dir"; return 1
     fi
 
     unzip -q -o "/tmp/awp_update.zip" -d "$new_dir" 2>/dev/null || {
-        log_error "Extract failed."; rm -rf "$temp_dir" "/tmp/awp_update.zip"; return 1
+        log_error "Extraction failed"
+        rm -rf "$temp_dir" "/tmp/awp_update.zip"; return 1
     }
 
-    local found
-    found=$(find "$new_dir" -maxdepth 5 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | while read -r f; do
+    local found=$(find "$new_dir" -maxdepth 5 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | while read f; do
         if grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" "$f" 2>/dev/null; then
             echo "$f"; break
         fi
     done | head -1)
 
     if [ -z "$found" ]; then
-        log_error "Panel not found in update."
+        log_error "Panel not found in update package"
         rm -rf "$temp_dir" "/tmp/awp_update.zip"; return 1
     fi
-    local actual_new_root
-    actual_new_root=$(dirname "$found")
+    local actual_new_root=$(dirname "$found")
 
-    log_step "Stopping panel…"
+    log_step "Stopping current panel..."
     run_pm2 stop "$MAIN_PROCESS" 2>/dev/null || true
 
-    log_step "Preserving data…"
+    log_step "Preserving user data..."
     local PRESERVE_DIR="/tmp/awp_preserve_$$"
     mkdir -p "$PRESERVE_DIR"
     [ -f ".env" ] && cp ".env" "$PRESERVE_DIR/" 2>/dev/null || true
@@ -950,9 +925,9 @@ update_panel() {
 
     local BACKUP_NAME="astrowax-backup-$(date +%Y%m%d_%H%M%S)"
     tar -czf "$BACKUP_NAME.tar.gz" --exclude=node_modules --exclude=.git . 2>/dev/null || true
-    log_success "Backup: $BACKUP_NAME.tar.gz"
+    log_success "Backup created: ${C_CYAN_L}$BACKUP_NAME.tar.gz${C_RESET}"
 
-    log_step "Applying update…"
+    log_step "Applying updates..."
     rm -rf src server public 2>/dev/null || true
     rm -f package.json package-lock.json index.html vite.config.ts tsconfig.json server.ts ecosystem.config.cjs 2>/dev/null || true
     cp -r "$actual_new_root"/* . 2>/dev/null || true
@@ -967,10 +942,10 @@ update_panel() {
     execute_step "Building Application" build_application
     execute_step "Restarting Panel" start_panel_node "$MAIN_PROCESS"
 
-    log_step "Waiting for health check…"
+    log_step "Waiting for services..."
     local ATTEMPTS=0
     while [ $ATTEMPTS -lt 20 ]; do
-        curl -s -f -m 2 "http://127.0.0.1:${MAIN_PORT}/" >/dev/null 2>&1 && break
+        curl -s -f "http://127.0.0.1:${MAIN_PORT}/" >/dev/null 2>&1 && break
         sleep 2
         ATTEMPTS=$((ATTEMPTS + 1))
     done
@@ -978,84 +953,83 @@ update_panel() {
     rm -rf "$temp_dir" "/tmp/awp_update.zip"
 
     echo ""
-    echo -e "${G1}    ╭──────────────────────────────────────────────────────────────╮${NC}"
-    echo -e "${G1}    │${NC}  ${W1}${BOLD}UPDATE COMPLETE${NC}                                             ${G1}│${NC}"
-    echo -e "${G1}    ╰──────────────────────────────────────────────────────────────╯${NC}"
+    echo -e "${C_GREEN_L}${C_BOLD}    ╔═══════════════════════════════════════════════════════════╗${C_RESET}"
+    echo -e "${C_GREEN_L}${C_BOLD}    ║${C_RESET}              ${C_WHITE}${C_BOLD}✓ UPDATE COMPLETE${C_RESET}${C_GREEN_L}${C_BOLD}                           ║${C_RESET}"
+    echo -e "${C_GREEN_L}${C_BOLD}    ╚═══════════════════════════════════════════════════════════╝${C_RESET}"
     echo ""
     show_status
 }
 
 # ═══════════════════════════════════════════════════════════
-# UNINSTALL
+# 🗑️ UNINSTALLER
 # ═══════════════════════════════════════════════════════════
+
 uninstall_panel() {
     print_banner
-    box_top
-    echo -e "${P1}    │${NC}  ${W1}${BOLD}UNINSTALL ASTROWAX PANEL${NC}"
-    box_bot
-    echo ""
-    echo -e "    ${R1}${BOLD}⚠  This will remove AstroWax Panel services.${NC}"
+    print_header "UNINSTALL ASTROWAX PANEL" "Removing all components"
+    
+    echo -e "    ${C_RED}${C_BOLD}⚠️  WARNING: This will permanently remove AstroWax Panel${C_RESET}"
+    echo -e "    ${C_RED}${C_BOLD}   All data, configurations, and services will be deleted${C_RESET}"
     echo ""
 
     if [ -t 0 ]; then
-        printf "    ${Y1}Type ${W1}yes${Y1} to confirm: ${NC}"
+        echo -ne "    ${C_RED}➜${C_RESET} Type ${C_WHITE}'yes'${C_RESET} to confirm: "
         read -r CONFIRM
-        [ "$CONFIRM" != "yes" ] && { echo -e "    ${Y1}Cancelled.${NC}"; return 0; }
+        [ "$CONFIRM" != "yes" ] && { echo -e "    ${C_YELLOW}Operation cancelled${C_RESET}"; return 0; }
     fi
 
     echo ""
-    log_step "Stopping services…"
+    log_step "Stopping services..."
     run_pm2 delete "$MAIN_PROCESS" 2>/dev/null || true
     run_pm2 delete "astrowax-admin" 2>/dev/null || true
     run_pm2 delete "astrowax-panel" 2>/dev/null || true
     run_pm2 save --force 2>/dev/null || true
 
-    local DOCKER_CLI
-    DOCKER_CLI=$(get_docker_cmd)
+    local DOCKER_CLI=$(get_docker_cmd)
     $DOCKER_CLI rm -f "astrowax-main" 2>/dev/null || true
     $DOCKER_CLI rm -f "astrowax-admin" 2>/dev/null || true
 
     pkill -f "node.*dist/server.cjs" 2>/dev/null || true
+    pkill -f "astrowax" 2>/dev/null || true
 
-    log_success "Services stopped."
+    log_success "Services terminated"
     echo ""
 
     local DELETE_DATA="n"
     if [ -t 0 ]; then
-        printf "    ${W1}Also delete panel files? (y/N): ${NC}"
+        echo -ne "    ${C_YELLOW}➜${C_RESET} Also delete panel files? (y/N): "
         read -r DELETE_DATA
     fi
 
     if [ "$DELETE_DATA" = "y" ] || [ "$DELETE_DATA" = "Y" ]; then
-        log_step "Removing files…"
+        log_step "Removing files..."
         cd "$HOME" || cd /tmp || true
 
-        local PANEL_PATH
-        PANEL_PATH=$(find_panel_dir)
+        local PANEL_PATH=$(find_panel_dir)
         [ -n "$PANEL_PATH" ] && rm -rf "$PANEL_PATH" 2>/dev/null || true
 
-        local path
         for path in "$HOME/$WORK_DIR_NAME" "$HOME/panel" "$HOME/astrowax-panel" "$HOME/AstroWax-Panel" "$HOME/WaxDaemon"; do
             [ -d "$path" ] && rm -rf "$path" 2>/dev/null || true
         done
 
         rm -rf /tmp/awp_* /tmp/astrowax* 2>/dev/null || true
 
-        log_success "Files removed."
+        log_success "Files removed"
     else
-        log_info "Files kept."
+        log_info "Files preserved"
     fi
 
     echo ""
-    echo -e "${G1}    ╭──────────────────────────────────────────────────────────────╮${NC}"
-    echo -e "${G1}    │${NC}  ${W1}${BOLD}UNINSTALL COMPLETE${NC}                                          ${G1}│${NC}"
-    echo -e "${G1}    ╰──────────────────────────────────────────────────────────────╯${NC}"
+    echo -e "${C_GREEN_L}${C_BOLD}    ╔═══════════════════════════════════════════════════════════╗${C_RESET}"
+    echo -e "${C_GREEN_L}${C_BOLD}    ║${C_RESET}            ${C_WHITE}${C_BOLD}✓ UNINSTALL COMPLETE${C_RESET}${C_GREEN_L}${C_BOLD}                         ║${C_RESET}"
+    echo -e "${C_GREEN_L}${C_BOLD}    ╚═══════════════════════════════════════════════════════════╝${C_RESET}"
     echo ""
 }
 
 # ═══════════════════════════════════════════════════════════
-# DIRECT INVOCATION
+# 🎮 COMMAND LINE PARSER
 # ═══════════════════════════════════════════════════════════
+
 for arg in "$@"; do
     case "$arg" in
         --version=1.0|--v=1.0|-v1.0) VERSION_CHOICE="2" ;;
@@ -1066,7 +1040,7 @@ for arg in "$@"; do
     esac
 done
 
-case "${1:-}" in
+case "$1" in
     install|main)
         if choose_version; then
             if [ "$SELECTED_VERSION" = "1.0" ]; then install_panel_v10
@@ -1083,32 +1057,30 @@ case "${1:-}" in
 esac
 
 # ═══════════════════════════════════════════════════════════
-# INTERACTIVE MENU
+# 🎨 INTERACTIVE MENU
 # ═══════════════════════════════════════════════════════════
+
 while true; do
     print_banner
-    echo -e "${P1}    ╭──────────────────────────────────────────────────────────────╮${NC}"
-    echo -e "${P1}    │${NC}              ${W1}${BOLD}ASTROWAX PANEL CONTROLLER${NC}                       ${P1}│${NC}"
-    echo -e "${P1}    ├──────────────────────────────────────────────────────────────┤${NC}"
-    echo -e "${P1}    │${NC}                                                              ${P1}│${NC}"
-    echo -e "${P1}    │${NC}    ${P2}${BOLD}[1]${NC}  ${W1}Install Panel${NC}      ${M1}fresh setup${NC}                       ${P1}│${NC}"
-    echo -e "${P1}    │${NC}    ${P2}${BOLD}[2]${NC}  ${W1}Update Panel${NC}       ${M1}keep data, pull latest${NC}            ${P1}│${NC}"
-    echo -e "${P1}    │${NC}    ${G1}${BOLD}[3]${NC}  ${G1}Start Panel${NC}        ${M1}bring services online${NC}             ${P1}│${NC}"
-    echo -e "${P1}    │${NC}    ${R1}${BOLD}[4]${NC}  ${R1}Stop Panel${NC}         ${M1}graceful shutdown${NC}                 ${P1}│${NC}"
-    echo -e "${P1}    │${NC}    ${Y1}${BOLD}[5]${NC}  ${Y1}Restart Panel${NC}      ${M1}hot reload process${NC}                ${P1}│${NC}"
-    echo -e "${P1}    │${NC}    ${C1}${BOLD}[6]${NC}  ${W1}Show Status${NC}        ${M1}health + URLs${NC}                     ${P1}│${NC}"
-    echo -e "${P1}    │${NC}    ${P3}${BOLD}[7]${NC}  ${W1}Uninstall Panel${NC}    ${M1}remove services${NC}                   ${P1}│${NC}"
-    echo -e "${P1}    │${NC}    ${M1}${BOLD}[8]${NC}  ${M1}Exit${NC}                                                 ${P1}│${NC}"
-    echo -e "${P1}    │${NC}                                                              ${P1}│${NC}"
-    echo -e "${P1}    ╰──────────────────────────────────────────────────────────────╯${NC}"
+    echo -e "    ${C_PURPLE_L}${C_BOLD}╔═══════════════════════════════════════════════════════════╗${C_RESET}"
+    echo -e "    ${C_PURPLE_L}${C_BOLD}║${C_RESET}           ${C_CYAN_L}${C_BOLD}ASTROWAX PANEL CONTROLLER${C_RESET}${C_PURPLE_L}${C_BOLD}                   ║${C_RESET}"
+    echo -e "    ${C_PURPLE_L}${C_BOLD}╠═══════════════════════════════════════════════════════════╣${C_RESET}"
+    echo -e "    ${C_PURPLE_L}${C_BOLD}║${C_RESET}                                                           ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "    ${C_PURPLE_L}${C_BOLD}║${C_RESET}  ${C_CYAN_L}[1]${C_RESET} ${C_BOLD}Install Panel${C_RESET}                                      ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "    ${C_PURPLE_L}${C_BOLD}║${C_RESET}  ${C_CYAN_L}[2]${C_RESET} ${C_BOLD}Update Panel${C_RESET}                                       ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "    ${C_PURPLE_L}${C_BOLD}║${C_RESET}  ${C_GREEN_L}[3]${C_RESET} ${C_BOLD}Start Panel${C_RESET}                                        ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "    ${C_PURPLE_L}${C_BOLD}║${C_RESET}  ${C_RED_L}[4]${C_RESET} ${C_BOLD}Stop Panel${C_RESET}                                         ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "    ${C_PURPLE_L}${C_BOLD}║${C_RESET}  ${C_YELLOW}[5]${C_RESET} ${C_BOLD}Restart Panel${C_RESET}                                      ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "    ${C_PURPLE_L}${C_BOLD}║${C_RESET}  ${C_CYAN_L}[6]${C_RESET} ${C_BOLD}Show Status${C_RESET}                                        ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "    ${C_PURPLE_L}${C_BOLD}║${C_RESET}  ${C_ORANGE}[7]${C_RESET} ${C_BOLD}Uninstall Panel${C_RESET}                                    ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "    ${C_PURPLE_L}${C_BOLD}║${C_RESET}  ${C_GRAY_L}[8]${C_RESET} ${C_DIM}Exit${C_RESET}                                               ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "    ${C_PURPLE_L}${C_BOLD}║${C_RESET}                                                           ${C_PURPLE_L}${C_BOLD}║${C_RESET}"
+    echo -e "    ${C_PURPLE_L}${C_BOLD}╚═══════════════════════════════════════════════════════════╝${C_RESET}"
     echo ""
-    echo -e "    ${M1}AstroWax Panel  ·  Made by ${P2}${BOLD}Itzytansh${NC}  ${M1}·  controller v${SCRIPT_VERSION}${NC}"
+    echo -e "    ${C_GRAY_L}AstroWax Panel v1.80 • Made by ${C_YELLOW}Itzytansh${C_RESET}"
     echo ""
 
-    if ! printf "    ${P2}${BOLD}▸${NC}  ${W1}Choose (1-8): ${NC}"; then
-        echo ""
-        break
-    fi
+    echo -ne "    ${C_CYAN}➜${C_RESET} Enter choice [1-8]: "
     if ! read -r CHOICE; then
         echo ""
         break
@@ -1120,20 +1092,15 @@ while true; do
                 if [ "$SELECTED_VERSION" = "1.0" ]; then install_panel_v10
                 else install_panel_v180; fi
             fi
-            pause_enter
+            if [ -t 0 ]; then echo -ne "    ${C_GRAY_L}Press Enter to continue...${C_RESET}"; read -r || true; fi
             ;;
-        2) update_panel; pause_enter ;;
-        3) start_panel; pause_enter ;;
-        4) stop_panel; pause_enter ;;
-        5) restart_panel; pause_enter ;;
-        6) show_status; pause_enter ;;
-        7) uninstall_panel; pause_enter ;;
-        8)
-            echo ""
-            echo -e "    ${P2}${BOLD}Goodbye.${NC}  ${M1}AstroWax is ready when you are.${NC}"
-            echo ""
-            exit 0
-            ;;
-        *) log_error "Invalid option."; sleep 1.1 ;;
+        2) update_panel; if [ -t 0 ]; then echo -ne "    ${C_GRAY_L}Press Enter to continue...${C_RESET}"; read -r || true; fi ;;
+        3) start_panel; if [ -t 0 ]; then echo -ne "    ${C_GRAY_L}Press Enter to continue...${C_RESET}"; read -r || true; fi ;;
+        4) stop_panel; if [ -t 0 ]; then echo -ne "    ${C_GRAY_L}Press Enter to continue...${C_RESET}"; read -r || true; fi ;;
+        5) restart_panel; if [ -t 0 ]; then echo -ne "    ${C_GRAY_L}Press Enter to continue...${C_RESET}"; read -r || true; fi ;;
+        6) show_status; if [ -t 0 ]; then echo -ne "    ${C_GRAY_L}Press Enter to continue...${C_RESET}"; read -r || true; fi ;;
+        7) uninstall_panel; if [ -t 0 ]; then echo -ne "    ${C_GRAY_L}Press Enter to continue...${C_RESET}"; read -r || true; fi ;;
+        8) echo -e "\n    ${C_PURPLE_L}👋 Goodbye! Thank you for using AstroWax Panel${C_RESET}\n"; exit 0 ;;
+        *) log_error "Invalid option!"; sleep 1.5 ;;
     esac
 done
