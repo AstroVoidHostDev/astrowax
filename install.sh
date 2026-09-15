@@ -49,6 +49,28 @@ log_err()     { echo -e "  ${C_RED}x${C_RESET} ${C_RED}$1${C_RESET}"; }
 log_step()    { echo -e "  ${C_BLUE}>${C_RESET} ${C_BOLD}$1${C_RESET}"; }
 
 # ───────────────────────────────────────────────────────────────────
+#  ✅ nvm PATH loader — makes node/npm available in every subshell
+# ───────────────────────────────────────────────────────────────────
+load_nvm_path() {
+    export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" >/dev/null 2>&1
+    [ -s "/usr/local/share/nvm/nvm.sh" ] && { export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh" >/dev/null 2>&1; }
+    # Fallback: scan node bin paths
+    for p in "$HOME/.nvm/versions/node/v20"*"/bin" "$HOME/.nvm/versions/node/v22"*"/bin"; do
+        [ -d "$p" ] && case ":$PATH:" in *":$p:"*) ;; *) export PATH="$p:$PATH" ;; esac
+    done
+    # Also add system node paths
+    case ":$PATH:" in
+        *":/usr/local/bin:"*) ;;
+        *) export PATH="/usr/local/bin:$PATH" ;;
+    esac
+    case ":$PATH:" in
+        *":/usr/bin:"*) ;;
+        *) export PATH="$PATH:/usr/bin" ;;
+    esac
+}
+
+# ───────────────────────────────────────────────────────────────────
 #  Banner - Big Bold AWP
 # ───────────────────────────────────────────────────────────────────
 print_banner() {
@@ -82,6 +104,7 @@ print_header() {
 #  Helpers
 # ───────────────────────────────────────────────────────────────────
 run_pm2() {
+    load_nvm_path
     if [ -x "./node_modules/.bin/pm2" ]; then ./node_modules/.bin/pm2 "$@"
     elif command -v pm2 &> /dev/null; then pm2 "$@"
     elif [ -x "/usr/local/bin/pm2" ]; then /usr/local/bin/pm2 "$@"
@@ -114,7 +137,9 @@ execute_step() {
     rm -f "$log_file"
 
     printf "  ${C_GRAY}[....]${C_RESET} %-48s" "$msg"
-    "$@" >"$log_file" 2>&1 &
+
+    # ✅ Load nvm PATH inside the subshell so npm/node work
+    ( load_nvm_path; "$@" ) >"$log_file" 2>&1 &
     local pid=$!
     local spin='|/-\'
     local i=0
@@ -131,7 +156,7 @@ execute_step() {
         printf "\r  ${C_RED}[FAIL]${C_RESET} %-48s ${C_RED}[error]${C_RESET}\n" "$msg"
         echo ""
         echo -e "  ${C_RED}Error: $msg (exit $rc)${C_RESET}"
-        [ -s "$log_file" ] && sed 's/^/    /' "$log_file" | tail -n 20
+        [ -s "$log_file" ] && sed 's/^/    /' "$log_file" | tail -n 25
         echo ""
     fi
     rm -f "$log_file"
@@ -154,6 +179,9 @@ MAIN_PORT="6767"
 SFTP_PORT="6868"
 SELECTED_VERSION=""
 
+# Remember start dir for uninstall
+PANEL_START_DIR="$(pwd)"
+
 # ───────────────────────────────────────────────────────────────────
 #  System Deps
 # ───────────────────────────────────────────────────────────────────
@@ -169,18 +197,20 @@ check_system_deps() {
             sudo dnf install -y $cmd -q > /dev/null 2>&1
         fi
     done
+    # Ensure basics
+    command -v curl &> /dev/null || return 1
+    command -v git &> /dev/null || return 1
+    command -v unzip &> /dev/null || return 1
+    return 0
 }
 
-# ═══════════════════════════════════════════════════════════════════
-# ✅ FIXED: Download — properly lands in panel/astrowax-panel/
-# ═══════════════════════════════════════════════════════════════════
+# ✅ FULL DOWNLOAD — lands in panel/astrowax-panel/
 download_panel_v180() {
     local archive_url="https://github.com/${GH_USER}/${GH_REPO}/raw/${GH_BRANCH}/${GH_ARCHIVE}"
     local main_archive_url="https://github.com/${GH_USER}/${GH_REPO}/archive/refs/heads/${GH_BRANCH}.zip"
     local START_DIR=$(pwd)
     rm -rf "$WORK_DIR_NAME" "$GH_ARCHIVE" 2>/dev/null
 
-    # Download panel.zip
     if ! curl -fsSL "$archive_url" -o "$GH_ARCHIVE" 2>/dev/null; then
         curl -fsSL "$main_archive_url" -o "/tmp/${GH_REPO}.zip" 2>/dev/null || return 1
         unzip -q -o "/tmp/${GH_REPO}.zip" -d /tmp/awp_extract 2>/dev/null || return 1
@@ -190,13 +220,12 @@ download_panel_v180() {
         rm -rf /tmp/awp_extract "/tmp/${GH_REPO}.zip"
     fi
 
-    # ✅ Extract WITHOUT -d so zip's own panel/ structure lands here
-    unzip -q -o "$GH_ARCHIVE" 2>/dev/null || return 1
+    mkdir -p "$WORK_DIR_NAME"
+    unzip -q -o "$GH_ARCHIVE" -d "$WORK_DIR_NAME" 2>/dev/null || return 1
     rm -f "$GH_ARCHIVE"
 
-    # ✅ Check if we have panel/astrowax-panel/ correctly
+    # Fix double-nesting if needed
     if [ ! -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
-        # Fallback: find the actual panel dir
         local actual_panel=$(find "$WORK_DIR_NAME" -maxdepth 5 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | while read f; do
             grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" "$f" 2>/dev/null && echo "$f" && break
         done | head -1)
@@ -204,13 +233,11 @@ download_panel_v180() {
         local actual_dir=$(dirname "$actual_panel")
         if [ "$actual_dir" != "$WORK_DIR_NAME/$PANEL_DIR_NAME" ]; then
             rm -rf "$WORK_DIR_NAME/$PANEL_DIR_NAME"
-            mv "$actual_dir" "$WORK_DIR_NAME/$PANEL_DIR_NAME" 2>/dev/null || return 1
+            mv "$actual_dir" "$WORK_DIR_NAME/$PANEL_DIR_NAME"
         fi
     fi
-
-    cd "$START_DIR" || return 1
-    [ -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ] || return 1
-    return 0
+    cd "$START_DIR"
+    [ -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]
 }
 
 install_docker() {
@@ -221,15 +248,18 @@ install_docker() {
     command -v docker &> /dev/null
 }
 
+# ✅ NODE INSTALL — installs Node 20 via nvm
 install_node() {
+    # Try nvm first
     export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
-    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-    [ -s "/usr/local/share/nvm/nvm.sh" ] && { export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh"; }
+    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" >/dev/null 2>&1
+    [ -s "/usr/local/share/nvm/nvm.sh" ] && { export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh" >/dev/null 2>&1; }
 
     if ! command -v nvm >/dev/null 2>&1; then
         curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash > /dev/null 2>&1 || true
         export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
-        [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+        [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" >/dev/null 2>&1
+        [ -s "/usr/local/share/nvm/nvm.sh" ] && { export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh" >/dev/null 2>&1; }
     fi
 
     if command -v nvm >/dev/null 2>&1; then
@@ -238,13 +268,19 @@ install_node() {
         nvm alias default 20 > /dev/null 2>&1 || true
     fi
 
+    # Fallback: nodesource
     if ! command -v node &> /dev/null; then
         if command -v apt-get &> /dev/null; then
             curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - > /dev/null 2>&1 || true
             sudo apt-get install -y nodejs > /dev/null 2>&1 || true
         fi
     fi
-    command -v node &> /dev/null
+
+    load_nvm_path
+    command -v node &> /dev/null || { echo "Node missing"; return 1; }
+    command -v npm &> /dev/null || { echo "npm missing"; return 1; }
+    echo "Node: $(node -v) | npm: $(npm -v)"
+    return 0
 }
 
 install_java() {
@@ -259,14 +295,20 @@ install_java() {
 setup_node_env() {
     local RUNTIME_PREF=$1
     install_node
+    load_nvm_path
+
     if ! command -v pm2 &> /dev/null; then
         sudo npm install -g pm2 > /dev/null 2>&1 || npm install -g pm2 > /dev/null 2>&1 || true
     fi
+
     local DEFAULT_RT="docker"; local ENABLE_DOCKER="true"
-    if [ "$RUNTIME_PREF" = "local" ]; then DEFAULT_RT="local"; ENABLE_DOCKER="false"; else
+    if [ "$RUNTIME_PREF" = "local" ]; then
+        DEFAULT_RT="local"; ENABLE_DOCKER="false"
+    else
         command -v docker &> /dev/null || install_docker 2>/dev/null || true
         [ -S "/var/run/docker.sock" ] && sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
     fi
+
     cat << EOF2 > ecosystem.config.cjs
 module.exports = {
   apps: [{
@@ -289,19 +331,49 @@ module.exports = {
 EOF2
 }
 
+# ✅ INSTALL DEPS — with npm check + apt fallback
 install_dependencies() {
-    [ -f "package.json" ] || return 1
+    [ -f "package.json" ] || { echo "package.json missing"; return 1; }
+
+    load_nvm_path
+
+    # Verify npm exists
+    if ! command -v npm &> /dev/null; then
+        echo "npm not found — attempting install..."
+        install_node || return 1
+        load_nvm_path
+        command -v npm &> /dev/null || { echo "npm still missing"; return 1; }
+    fi
+
     [ -f ".npmrc" ] || echo "legacy-peer-deps=true" > .npmrc
+
     rm -rf node_modules package-lock.json 2>/dev/null || true
     npm cache clean --force > /dev/null 2>&1 || true
-    npm install --legacy-peer-deps --no-audit --no-fund > /dev/null 2>&1
+
+    # Show npm version
+    echo "npm: $(npm -v)"
+
+    # Install with full log on failure
+    npm install --legacy-peer-deps --no-audit --no-fund 2>&1 || npm install --legacy-peer-deps 2>&1
 }
 
+# ✅ BUILD — with full log
 build_application() {
     [ -f "package.json" ] || return 1
+
+    load_nvm_path
+    command -v npm &> /dev/null || { echo "npm missing for build"; return 1; }
+
     rm -rf dist 2>/dev/null || true
-    NODE_OPTIONS="--max-old-space-size=2048" npm run build > /dev/null 2>&1
-    [ -f "dist/server.cjs" ]
+
+    echo "Running: npm run build"
+    NODE_OPTIONS="--max-old-space-size=2048" npm run build 2>&1
+
+    if [ ! -f "dist/server.cjs" ]; then
+        echo "Build failed: dist/server.cjs not created"
+        return 1
+    fi
+    return 0
 }
 
 # ───────────────────────────────────────────────────────────────────
@@ -309,6 +381,7 @@ build_application() {
 # ───────────────────────────────────────────────────────────────────
 start_panel_node() {
     local TARGET=$1
+    load_nvm_path
     command -v fuser &> /dev/null && fuser -k ${MAIN_PORT}/tcp 2>/dev/null || true
     pkill -f "node.*server.cjs" 2>/dev/null || true
     run_pm2 delete "$TARGET" 2>/dev/null || true
@@ -382,7 +455,7 @@ show_status() {
 }
 
 # ───────────────────────────────────────────────────────────────────
-#  Version Selector - Clean
+#  Version Selector
 # ───────────────────────────────────────────────────────────────────
 choose_version() {
     print_banner
@@ -409,7 +482,7 @@ choose_version() {
 }
 
 # ───────────────────────────────────────────────────────────────────
-#  Install v1.80 - Clean
+#  Install v1.80
 # ───────────────────────────────────────────────────────────────────
 install_panel_v180() {
     print_banner
@@ -445,10 +518,25 @@ install_panel_v180() {
 
     echo ""
     print_header "Installing v1.80" "This may take a few minutes"
+
+    # ✅ System packages first (apt update + install)
+    execute_step "Updating system packages" bash -c 'sudo apt-get update -y -q 2>/dev/null; sudo apt-get install -y -q curl git tar unzip build-essential ca-certificates 2>/dev/null' || true
     execute_step "Checking system dependencies" check_system_deps
     execute_step "Installing Java runtime" install_java
+
     local RUNTIME_ARG="docker"; [ "$MODE_CHOICE" = "2" ] && RUNTIME_ARG="local"
+
+    # ✅ Node install with npm check
     execute_step "Configuring Node.js v20" setup_node_env "$RUNTIME_ARG"
+
+    # ✅ Verify npm exists after node step
+    load_nvm_path
+    if ! command -v npm &> /dev/null; then
+        log_warn "npm still missing — forcing install"
+        execute_step "Installing npm" bash -c 'curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - >/dev/null 2>&1; sudo apt-get install -y nodejs >/dev/null 2>&1' || true
+        load_nvm_path
+    fi
+
     execute_step "Installing dependencies" install_dependencies
     execute_step "Building application" build_application
     execute_step "Starting service" start_panel_node "$MAIN_PROCESS"
@@ -459,7 +547,11 @@ install_panel_v180() {
         sleep 2; ATTEMPTS=$((ATTEMPTS+1))
     done
 
-    if [ "$OK" != "1" ]; then log_err "Panel failed to start"; run_pm2 logs "$MAIN_PROCESS" --lines 40 --nostream 2>&1 || true; return 1; fi
+    if [ "$OK" != "1" ]; then
+        log_err "Panel failed to start"
+        run_pm2 logs "$MAIN_PROCESS" --lines 40 --nostream 2>&1 || true
+        return 1
+    fi
 
     local IP=$(curl -s -m 2 ifconfig.me 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
     echo ""
@@ -518,9 +610,7 @@ update_panel() {
     log_ok "Update complete"; show_status
 }
 
-# ═══════════════════════════════════════════════════════════════════
-# ✅ FIXED: Uninstall — removes panel folder FULLY
-# ═══════════════════════════════════════════════════════════════════
+# ✅ FULL UNINSTALL — removes everything
 uninstall_panel() {
     print_banner
     print_header "Uninstall Panel" "This will remove AstroWax Panel"
@@ -541,8 +631,6 @@ uninstall_panel() {
 
     pkill -f "node.*dist/server.cjs" 2>/dev/null || true
     pkill -f "astrowax" 2>/dev/null || true
-
-    # Free port
     command -v fuser &> /dev/null && fuser -k ${MAIN_PORT}/tcp 2>/dev/null || true
 
     log_ok "Services stopped"
@@ -552,40 +640,48 @@ uninstall_panel() {
     if [[ "$DELETE_DATA" =~ ^[Yy]$ ]]; then
         print_header "Removing Files" "Cleaning up installation"
 
-        # ✅ Move out of the panel dir FIRST (so we can delete it)
+        # Move out FIRST so we can delete current dir
         cd "$HOME" || cd /tmp || cd / || true
 
-        # ✅ Remove the entire panel folder (from anywhere)
-        # 1. From current dir if it was run inside panel/
-        rm -rf "$HOME/panel" 2>/dev/null || true
-        rm -rf "$HOME/astrowax-panel" 2>/dev/null || true
-        rm -rf "$HOME/AstroWax-Panel" 2>/dev/null || true
-        rm -rf "$HOME/WaxDaemon" 2>/dev/null || true
-
-        # 2. Any panel dir found on the system
-        for dir in /root/panel /home/*/panel /opt/panel /var/www/panel; do
-            [ -d "$dir" ] && rm -rf "$dir" 2>/dev/null || true
+        # Delete from all likely locations
+        for path in \
+            "$HOME/panel" \
+            "$HOME/astrowax-panel" \
+            "$HOME/AstroWax-Panel" \
+            "$HOME/WaxDaemon" \
+            "$HOME/$WORK_DIR_NAME" \
+            "/root/panel" \
+            "/opt/panel" \
+            "/var/www/panel"
+        do
+            [ -e "$path" ] && rm -rf "$path" 2>/dev/null || true
         done
 
-        # 3. If we were in a panel dir when script started, use that path
-        if [ -n "$PANEL_START_DIR" ] && [ -d "$PANEL_START_DIR" ]; then
+        # Delete from any user's home
+        for userdir in /home/*; do
+            [ -d "$userdir/panel" ] && rm -rf "$userdir/panel" 2>/dev/null || true
+            [ -d "$userdir/astrowax-panel" ] && rm -rf "$userdir/astrowax-panel" 2>/dev/null || true
+        done
+
+        # Delete from script's start dir if it was in a panel
+        if [ -n "$PANEL_START_DIR" ]; then
             case "$PANEL_START_DIR" in
-                */panel/*|*/astrowax-panel/*|*/panel|*/astrowax-panel)
+                *panel*|*astrowax*)
                     rm -rf "$PANEL_START_DIR" 2>/dev/null || true
-                    # Also remove the parent "panel" folder if it becomes empty-ish
                     local parent=$(dirname "$PANEL_START_DIR")
                     case "$parent" in
-                        */panel) rm -rf "$parent" 2>/dev/null || true ;;
+                        *panel|*astrowax) rm -rf "$parent" 2>/dev/null || true ;;
                     esac
                     ;;
             esac
         fi
 
-        # 4. Remove temp files
-        rm -rf /tmp/awp_* /tmp/astrowax* 2>/dev/null || true
+        # Clean temp files
+        rm -rf /tmp/awp_* /tmp/astrowax* /tmp/panel*.zip 2>/dev/null || true
+        rm -f "$HOME/panel.zip" 2>/dev/null || true
 
-        # 5. Remove any leftover zip
-        rm -f "$HOME/panel.zip" /tmp/panel.zip 2>/dev/null || true
+        # Clean PM2 dumps
+        rm -rf "$HOME/.pm2/dump.pm2" 2>/dev/null || true
 
         log_ok "Files removed"
     else
@@ -610,9 +706,6 @@ for arg in "$@"; do
     esac
 done
 
-# ✅ Remember where user was when script started
-PANEL_START_DIR="$(pwd)"
-
 case "$1" in
     install|main) choose_version && { [ "$SELECTED_VERSION" = "1.0" ] && install_panel_v10 || install_panel_v180; }; exit 0 ;;
     update) update_panel; exit 0 ;;
@@ -624,7 +717,7 @@ case "$1" in
 esac
 
 # ───────────────────────────────────────────────────────────────────
-#  Interactive Menu - Professional
+#  Interactive Menu
 # ───────────────────────────────────────────────────────────────────
 while true; do
     print_banner
