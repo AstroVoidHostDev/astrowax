@@ -49,29 +49,21 @@ log_err()     { echo -e "  ${C_RED}x${C_RESET} ${C_RED}$1${C_RESET}"; }
 log_step()    { echo -e "  ${C_BLUE}>${C_RESET} ${C_BOLD}$1${C_RESET}"; }
 
 # ───────────────────────────────────────────────────────────────────
-#  ✅ nvm PATH loader — makes node/npm available in every subshell
+#  nvm PATH loader
 # ───────────────────────────────────────────────────────────────────
 load_nvm_path() {
     export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
     [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" >/dev/null 2>&1
     [ -s "/usr/local/share/nvm/nvm.sh" ] && { export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh" >/dev/null 2>&1; }
-    # Fallback: scan node bin paths
     for p in "$HOME/.nvm/versions/node/v20"*"/bin" "$HOME/.nvm/versions/node/v22"*"/bin"; do
         [ -d "$p" ] && case ":$PATH:" in *":$p:"*) ;; *) export PATH="$p:$PATH" ;; esac
     done
-    # Also add system node paths
-    case ":$PATH:" in
-        *":/usr/local/bin:"*) ;;
-        *) export PATH="/usr/local/bin:$PATH" ;;
-    esac
-    case ":$PATH:" in
-        *":/usr/bin:"*) ;;
-        *) export PATH="$PATH:/usr/bin" ;;
-    esac
+    case ":$PATH:" in *":/usr/local/bin:"*) ;; *) export PATH="/usr/local/bin:$PATH" ;; esac
+    case ":$PATH:" in *":/usr/bin:"*) ;; *) export PATH="$PATH:/usr/bin" ;; esac
 }
 
 # ───────────────────────────────────────────────────────────────────
-#  Banner - Big Bold AWP
+#  Banner
 # ───────────────────────────────────────────────────────────────────
 print_banner() {
     clear 2>/dev/null || true
@@ -92,10 +84,8 @@ EOF
 }
 
 print_header() {
-    local title="$1"
-    local sub="$2"
-    echo -e "${C_WHITE}${C_BOLD}${title}${C_RESET}"
-    [[ -n "$sub" ]] && echo -e "${C_GRAY}${sub}${C_RESET}"
+    echo -e "${C_WHITE}${C_BOLD}$1${C_RESET}"
+    [[ -n "$2" ]] && echo -e "${C_GRAY}$2${C_RESET}"
     echo -e "${C_GRAY}──────────────────────────────────────────────────────${C_RESET}"
     echo ""
 }
@@ -135,10 +125,7 @@ execute_step() {
     local msg="$1"; shift
     local log_file="/tmp/awp_$$_$RANDOM.log"
     rm -f "$log_file"
-
     printf "  ${C_GRAY}[....]${C_RESET} %-48s" "$msg"
-
-    # ✅ Load nvm PATH inside the subshell so npm/node work
     ( load_nvm_path; "$@" ) >"$log_file" 2>&1 &
     local pid=$!
     local spin='|/-\'
@@ -149,7 +136,6 @@ execute_step() {
     done
     wait $pid
     local rc=$?
-
     if [ $rc -eq 0 ]; then
         printf "\r  ${C_GREEN}[ OK ]${C_RESET} %-48s ${C_GRAY}[done]${C_RESET}\n" "$msg"
     else
@@ -170,6 +156,10 @@ GH_USER="${ASTROWAX_GH_USER:-AstroVoidHostDev}"
 GH_REPO="${ASTROWAX_GH_REPO:-astrowax}"
 GH_BRANCH="${ASTROWAX_GH_BRANCH:-main}"
 GH_ARCHIVE="${ASTROWAX_GH_ARCHIVE:-panel.zip}"
+V1_GH_USER="${ASTROWAX_V1_GH_USER:-AstroVoidHostDev}"
+V1_GH_REPO="${ASTROWAX_V1_GH_REPO:-AstroWax-Panel}"
+V1_GH_DAEMON="${ASTROWAX_V1_GH_DAEMON:-WaxDaemon}"
+
 WORK_DIR_NAME="panel"
 PANEL_DIR_NAME="astrowax-panel"
 EXPECTED_PKG_NAME="astrowax-panel"
@@ -177,9 +167,10 @@ MAIN_PROCESS="astrowax-main"
 MAIN_CONTAINER="astrowax-main"
 MAIN_PORT="6767"
 SFTP_PORT="6868"
+V1_PANEL_DIR="$HOME/AstroWax-Panel/panel"
+V1_NODE_DIR="$HOME/WaxDaemon/daemon/daemon"
 SELECTED_VERSION=""
 
-# Remember start dir for uninstall
 PANEL_START_DIR="$(pwd)"
 
 # ───────────────────────────────────────────────────────────────────
@@ -197,14 +188,9 @@ check_system_deps() {
             sudo dnf install -y $cmd -q > /dev/null 2>&1
         fi
     done
-    # Ensure basics
-    command -v curl &> /dev/null || return 1
-    command -v git &> /dev/null || return 1
-    command -v unzip &> /dev/null || return 1
-    return 0
+    command -v curl &> /dev/null && command -v git &> /dev/null && command -v unzip &> /dev/null
 }
 
-# ✅ FULL DOWNLOAD — lands in panel/astrowax-panel/
 download_panel_v180() {
     local archive_url="https://github.com/${GH_USER}/${GH_REPO}/raw/${GH_BRANCH}/${GH_ARCHIVE}"
     local main_archive_url="https://github.com/${GH_USER}/${GH_REPO}/archive/refs/heads/${GH_BRANCH}.zip"
@@ -224,7 +210,6 @@ download_panel_v180() {
     unzip -q -o "$GH_ARCHIVE" -d "$WORK_DIR_NAME" 2>/dev/null || return 1
     rm -f "$GH_ARCHIVE"
 
-    # Fix double-nesting if needed
     if [ ! -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
         local actual_panel=$(find "$WORK_DIR_NAME" -maxdepth 5 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | while read f; do
             grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" "$f" 2>/dev/null && echo "$f" && break
@@ -248,9 +233,7 @@ install_docker() {
     command -v docker &> /dev/null
 }
 
-# ✅ NODE INSTALL — installs Node 20 via nvm
 install_node() {
-    # Try nvm first
     export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
     [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" >/dev/null 2>&1
     [ -s "/usr/local/share/nvm/nvm.sh" ] && { export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh" >/dev/null 2>&1; }
@@ -268,7 +251,6 @@ install_node() {
         nvm alias default 20 > /dev/null 2>&1 || true
     fi
 
-    # Fallback: nodesource
     if ! command -v node &> /dev/null; then
         if command -v apt-get &> /dev/null; then
             curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - > /dev/null 2>&1 || true
@@ -331,53 +313,37 @@ module.exports = {
 EOF2
 }
 
-# ✅ INSTALL DEPS — with npm check + apt fallback
 install_dependencies() {
     [ -f "package.json" ] || { echo "package.json missing"; return 1; }
-
     load_nvm_path
 
-    # Verify npm exists
     if ! command -v npm &> /dev/null; then
-        echo "npm not found — attempting install..."
+        echo "npm not found — installing..."
         install_node || return 1
         load_nvm_path
-        command -v npm &> /dev/null || { echo "npm still missing"; return 1; }
+        command -v npm &> /dev/null || { echo "npm missing"; return 1; }
     fi
 
     [ -f ".npmrc" ] || echo "legacy-peer-deps=true" > .npmrc
-
     rm -rf node_modules package-lock.json 2>/dev/null || true
     npm cache clean --force > /dev/null 2>&1 || true
-
-    # Show npm version
     echo "npm: $(npm -v)"
-
-    # Install with full log on failure
     npm install --legacy-peer-deps --no-audit --no-fund 2>&1 || npm install --legacy-peer-deps 2>&1
 }
 
-# ✅ BUILD — with full log
 build_application() {
     [ -f "package.json" ] || return 1
-
     load_nvm_path
-    command -v npm &> /dev/null || { echo "npm missing for build"; return 1; }
-
+    command -v npm &> /dev/null || { echo "npm missing"; return 1; }
     rm -rf dist 2>/dev/null || true
-
     echo "Running: npm run build"
     NODE_OPTIONS="--max-old-space-size=2048" npm run build 2>&1
-
-    if [ ! -f "dist/server.cjs" ]; then
-        echo "Build failed: dist/server.cjs not created"
-        return 1
-    fi
+    [ -f "dist/server.cjs" ] || { echo "Build failed: no dist/server.cjs"; return 1; }
     return 0
 }
 
 # ───────────────────────────────────────────────────────────────────
-#  Panel Control
+#  Panel Control (v1.80)
 # ───────────────────────────────────────────────────────────────────
 start_panel_node() {
     local TARGET=$1
@@ -481,9 +447,9 @@ choose_version() {
     return 0
 }
 
-# ───────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════
 #  Install v1.80
-# ───────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════
 install_panel_v180() {
     print_banner
     local PANEL_PATH=$(find_panel_dir)
@@ -518,18 +484,13 @@ install_panel_v180() {
 
     echo ""
     print_header "Installing v1.80" "This may take a few minutes"
-
-    # ✅ System packages first (apt update + install)
     execute_step "Updating system packages" bash -c 'sudo apt-get update -y -q 2>/dev/null; sudo apt-get install -y -q curl git tar unzip build-essential ca-certificates 2>/dev/null' || true
     execute_step "Checking system dependencies" check_system_deps
     execute_step "Installing Java runtime" install_java
 
     local RUNTIME_ARG="docker"; [ "$MODE_CHOICE" = "2" ] && RUNTIME_ARG="local"
-
-    # ✅ Node install with npm check
     execute_step "Configuring Node.js v20" setup_node_env "$RUNTIME_ARG"
 
-    # ✅ Verify npm exists after node step
     load_nvm_path
     if ! command -v npm &> /dev/null; then
         log_warn "npm still missing — forcing install"
@@ -548,8 +509,7 @@ install_panel_v180() {
     done
 
     if [ "$OK" != "1" ]; then
-        log_err "Panel failed to start"
-        run_pm2 logs "$MAIN_PROCESS" --lines 40 --nostream 2>&1 || true
+        log_err "Panel failed to start"; run_pm2 logs "$MAIN_PROCESS" --lines 40 --nostream 2>&1 || true
         return 1
     fi
 
@@ -566,23 +526,195 @@ install_panel_v180() {
     show_status
 }
 
+# ═══════════════════════════════════════════════════════════════════
+# ✅ V1.0 INSTALL — PROPERLY INSTALLS V1.0 (not 1.80)
+# ═══════════════════════════════════════════════════════════════════
 install_panel_v10() {
     print_banner
-    print_header "Install v1.0 Legacy" "Classic mode"
-    echo -e "  ${C_WHITE}1.${C_RESET} Panel Only"
-    echo -e "  ${C_WHITE}2.${C_RESET} Node Daemon Only"
-    echo -e "  ${C_WHITE}3.${C_RESET} Both"
-    echo -e "  ${C_WHITE}4.${C_RESET} Back"
+    print_header "Install v1.0 Legacy" "Classic SQLite Edition"
+    echo -e "  ${C_WHITE}${C_BOLD}1.${C_RESET} Install Panel v1.0 only"
+    echo -e "  ${C_WHITE}${C_BOLD}2.${C_RESET} Install Node Daemon only"
+    echo -e "  ${C_WHITE}${C_BOLD}3.${C_RESET} Install BOTH (Panel + Node Daemon)"
+    echo -e "  ${C_WHITE}${C_BOLD}4.${C_RESET} Back"
     echo ""
-    local V1_CHOICE=""; echo -ne "  ${C_CYAN}Select [1-4]: ${C_RESET}"; read -r V1_CHOICE
+    local V1_CHOICE=""
+    echo -ne "  ${C_CYAN}Select [1-4]: ${C_RESET}"; read -r V1_CHOICE
+
     case "$V1_CHOICE" in
-        1) bash -c 'set -e; sudo apt-get update -y && sudo apt-get install -y curl git unzip build-essential && curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash; export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm install 20; rm -rf ~/AstroWax-Panel; git clone https://github.com/AstroVoidHostDev/AstroWax-Panel ~/AstroWax-Panel; cd ~/AstroWax-Panel; unzip -oq panel.zip; cd panel; npm install --legacy-peer-deps; npm run seed; npm run createUser' ;;
-        2) bash -c 'set -e; sudo apt-get update -y && sudo apt-get install -y curl git zip unzip build-essential; curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash; export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm install 20; rm -rf ~/WaxDaemon; git clone https://github.com/AstroVoidHostDev/WaxDaemon ~/WaxDaemon; cd ~/WaxDaemon; unzip -oq waxdaemon.zip; cd daemon/daemon; npm install --legacy-peer-deps' ;;
-        3) install_panel_v10 ;;
+        1) install_v10_panel ;;
+        2) install_v10_node ;;
+        3) install_v10_panel; echo ""; install_v10_node ;;
         4) return 0 ;;
+        *) log_err "Invalid"; return 1 ;;
     esac
 }
 
+# ✅ V1.0 PANEL INSTALL
+install_v10_panel() {
+    echo ""
+    log_step "Installing AstroWax Panel v1.0..."
+    echo ""
+
+    bash -c 'set -e
+export DEBIAN_FRONTEND=noninteractive
+sudo apt-get update -y
+sudo apt-get install -y curl git unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config libsqlite3-dev sqlite3
+
+# Install nvm + Node 20
+(command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash)
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+[ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm
+. "$NVM_DIR/nvm.sh"
+nvm install 20
+nvm use 20
+
+# Clone V1.0 repo
+rm -rf ~/AstroWax-Panel
+git clone https://github.com/AstroVoidHostDev/AstroWax-Panel ~/AstroWax-Panel
+cd ~/AstroWax-Panel
+
+# Extract panel.zip
+unzip -oq panel.zip
+cd panel
+
+# Install deps
+rm -rf node_modules package-lock.json
+npm cache clean --force
+npm install --legacy-peer-deps
+npm install connect-sqlite3 sqlite3
+
+# Setup database
+npm run seed
+npm run createUser
+'
+
+    if [ -d "$V1_PANEL_DIR" ]; then
+        log_ok "Panel v1.0 installed at: $V1_PANEL_DIR"
+        echo ""
+        echo -e "  ${C_GRAY}Start it with menu option: ${C_WHITE}Start Panel v1.0${C_RESET}"
+    else
+        log_err "Panel v1.0 install failed"
+        return 1
+    fi
+}
+
+# ✅ V1.0 NODE DAEMON INSTALL
+install_v10_node() {
+    echo ""
+    log_step "Installing AstroWax Node Daemon..."
+    echo ""
+
+    bash -c 'set -e
+export DEBIAN_FRONTEND=noninteractive
+sudo apt-get update -y
+sudo apt-get install -y curl git zip unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config
+
+# Install nvm + Node 20
+(command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash)
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+[ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm
+. "$NVM_DIR/nvm.sh"
+nvm install 20
+nvm use 20
+
+# Clone Daemon repo
+rm -rf ~/WaxDaemon
+git clone https://github.com/AstroVoidHostDev/WaxDaemon ~/WaxDaemon
+cd ~/WaxDaemon
+
+# Extract
+unzip -oq waxdaemon.zip
+cd daemon/daemon
+
+# Rename if needed
+[ -f index.js.txt ] && mv index.js.txt index.js || true
+
+# Install deps
+rm -rf node_modules package-lock.json
+npm cache clean --force
+npm install --legacy-peer-deps
+'
+
+    if [ -d "$V1_NODE_DIR" ]; then
+        log_ok "Node Daemon installed at: $V1_NODE_DIR"
+        echo ""
+        echo -e "  ${C_YELLOW}${C_BOLD}Next step:${C_RESET}"
+        echo -e "  ${C_WHITE}1.${C_RESET} Edit config: ${C_CYAN}cd $V1_NODE_DIR${C_RESET}"
+        echo -e "  ${C_WHITE}2.${C_RESET} Start daemon: ${C_CYAN}node .${C_RESET}"
+        echo -e "  ${C_WHITE}${C_RESET}Or use menu option: ${C_WHITE}Start Node Daemon v1.0${C_RESET}"
+    else
+        log_err "Node Daemon install failed"
+        return 1
+    fi
+}
+
+# ✅ START PANEL V1.0 (from your command)
+start_v10_panel() {
+    print_banner
+    print_header "Start Panel v1.0" "Legacy mode"
+
+    if [ ! -d "$V1_PANEL_DIR" ]; then
+        log_err "Panel v1.0 not installed at $V1_PANEL_DIR"
+        log_info "Install it first: Menu option 1 → Version 2"
+        return 1
+    fi
+
+    log_info "Directory: $V1_PANEL_DIR"
+    echo ""
+    log_step "Running pre-flight (apt install npm + npm install)..."
+    echo ""
+
+    bash -c "cd '$V1_PANEL_DIR'
+        sudo apt-get update -y -q >/dev/null 2>&1
+        sudo apt-get install -y npm >/dev/null 2>&1 || true
+        export NVM_DIR=\"\${NVM_DIR:-\$HOME/.nvm}\"
+        [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm
+        [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"
+        nvm use 20 >/dev/null 2>&1 || true
+        npm install --legacy-peer-deps
+        echo ''
+        echo '========================================='
+        echo 'Starting panel v1.0...'
+        echo '========================================='
+        node .
+    "
+}
+
+# ✅ START NODE DAEMON V1.0 (from your command)
+start_v10_node() {
+    print_banner
+    print_header "Start Node Daemon v1.0" "Legacy mode"
+
+    if [ ! -d "$V1_NODE_DIR" ]; then
+        log_err "Node Daemon not installed at $V1_NODE_DIR"
+        log_info "Install it first: Menu option 1 → Version 2 → Option 2 or 3"
+        return 1
+    fi
+
+    log_info "Directory: $V1_NODE_DIR"
+    echo ""
+    log_step "Running pre-flight (apt install npm + npm install)..."
+    echo ""
+
+    bash -c "cd '$V1_NODE_DIR'
+        sudo apt-get update -y -q >/dev/null 2>&1
+        sudo apt-get install -y npm >/dev/null 2>&1 || true
+        export NVM_DIR=\"\${NVM_DIR:-\$HOME/.nvm}\"
+        [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm
+        [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"
+        nvm use 20 >/dev/null 2>&1 || true
+        npm install --legacy-peer-deps
+        echo ''
+        echo '========================================='
+        echo 'Starting node daemon v1.0...'
+        echo '========================================='
+        node .
+    "
+}
+
+# ───────────────────────────────────────────────────────────────────
+#  Update
+# ───────────────────────────────────────────────────────────────────
 update_panel() {
     print_banner
     print_header "Update Panel" "Fetching latest version"
@@ -594,7 +726,7 @@ update_panel() {
     local temp_dir="/tmp/awp_update_$$"; mkdir -p "$temp_dir/new"
     unzip -q -o "/tmp/awp_update.zip" -d "$temp_dir/new"
     local found=$(find "$temp_dir/new" -maxdepth 5 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | while read f; do grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" "$f" 2>/dev/null && echo "$f" && break; done | head -1)
-    [ -z "$found" ] && { log_err "Update package invalid"; rm -rf "$temp_dir" "/tmp/awp_update.zip"; return 1; }
+    [ -z "$found" ] && { log_err "Update invalid"; rm -rf "$temp_dir" "/tmp/awp_update.zip"; return 1; }
     local new_root=$(dirname "$found")
     run_pm2 stop "$MAIN_PROCESS" 2>/dev/null || true
     local PRESERVE="/tmp/awp_preserve_$$"; mkdir -p "$PRESERVE"
@@ -610,7 +742,9 @@ update_panel() {
     log_ok "Update complete"; show_status
 }
 
-# ✅ FULL UNINSTALL — removes everything
+# ───────────────────────────────────────────────────────────────────
+#  Uninstall
+# ───────────────────────────────────────────────────────────────────
 uninstall_panel() {
     print_banner
     print_header "Uninstall Panel" "This will remove AstroWax Panel"
@@ -631,6 +765,8 @@ uninstall_panel() {
 
     pkill -f "node.*dist/server.cjs" 2>/dev/null || true
     pkill -f "astrowax" 2>/dev/null || true
+    pkill -f "node .*AstroWax-Panel" 2>/dev/null || true
+    pkill -f "node .*WaxDaemon" 2>/dev/null || true
     command -v fuser &> /dev/null && fuser -k ${MAIN_PORT}/tcp 2>/dev/null || true
 
     log_ok "Services stopped"
@@ -640,10 +776,8 @@ uninstall_panel() {
     if [[ "$DELETE_DATA" =~ ^[Yy]$ ]]; then
         print_header "Removing Files" "Cleaning up installation"
 
-        # Move out FIRST so we can delete current dir
         cd "$HOME" || cd /tmp || cd / || true
 
-        # Delete from all likely locations
         for path in \
             "$HOME/panel" \
             "$HOME/astrowax-panel" \
@@ -657,13 +791,11 @@ uninstall_panel() {
             [ -e "$path" ] && rm -rf "$path" 2>/dev/null || true
         done
 
-        # Delete from any user's home
         for userdir in /home/*; do
             [ -d "$userdir/panel" ] && rm -rf "$userdir/panel" 2>/dev/null || true
             [ -d "$userdir/astrowax-panel" ] && rm -rf "$userdir/astrowax-panel" 2>/dev/null || true
         done
 
-        # Delete from script's start dir if it was in a panel
         if [ -n "$PANEL_START_DIR" ]; then
             case "$PANEL_START_DIR" in
                 *panel*|*astrowax*)
@@ -676,11 +808,8 @@ uninstall_panel() {
             esac
         fi
 
-        # Clean temp files
         rm -rf /tmp/awp_* /tmp/astrowax* /tmp/panel*.zip 2>/dev/null || true
         rm -f "$HOME/panel.zip" 2>/dev/null || true
-
-        # Clean PM2 dumps
         rm -rf "$HOME/.pm2/dump.pm2" 2>/dev/null || true
 
         log_ok "Files removed"
@@ -714,6 +843,8 @@ case "$1" in
     stop) stop_panel; exit 0 ;;
     restart) restart_panel; exit 0 ;;
     status) show_status; exit 0 ;;
+    start-v10-panel) start_v10_panel; exit 0 ;;
+    start-v10-node) start_v10_node; exit 0 ;;
 esac
 
 # ───────────────────────────────────────────────────────────────────
@@ -723,18 +854,20 @@ while true; do
     print_banner
     echo -e "  ${C_WHITE}${C_BOLD}MAIN MENU${C_RESET}"
     echo ""
-    echo -e "  ${C_WHITE}1.${C_RESET} Install Panel       ${C_GRAY}- Deploy fresh installation${C_RESET}"
-    echo -e "  ${C_WHITE}2.${C_RESET} Update Panel        ${C_GRAY}- Upgrade to latest${C_RESET}"
-    echo -e "  ${C_WHITE}3.${C_RESET} Start Panel         ${C_GRAY}- Power on services${C_RESET}"
-    echo -e "  ${C_WHITE}4.${C_RESET} Stop Panel          ${C_GRAY}- Graceful shutdown${C_RESET}"
-    echo -e "  ${C_WHITE}5.${C_RESET} Restart Panel       ${C_GRAY}- Refresh services${C_RESET}"
-    echo -e "  ${C_WHITE}6.${C_RESET} Show Status         ${C_GRAY}- View dashboard${C_RESET}"
-    echo -e "  ${C_WHITE}7.${C_RESET} Uninstall Panel     ${C_GRAY}- Remove installation${C_RESET}"
-    echo -e "  ${C_WHITE}8.${C_RESET} Exit"
+    echo -e "  ${C_WHITE}1.${C_RESET}  Install Panel             ${C_GRAY}- Deploy (v1.80 / v1.0)${C_RESET}"
+    echo -e "  ${C_WHITE}2.${C_RESET}  Update Panel              ${C_GRAY}- Upgrade to latest${C_RESET}"
+    echo -e "  ${C_WHITE}3.${C_RESET}  Start Panel v1.80         ${C_GRAY}- PM2 mode${C_RESET}"
+    echo -e "  ${C_WHITE}4.${C_RESET}  Stop Panel v1.80          ${C_GRAY}- Graceful shutdown${C_RESET}"
+    echo -e "  ${C_WHITE}5.${C_RESET}  Restart Panel v1.80       ${C_GRAY}- Refresh services${C_RESET}"
+    echo -e "  ${C_WHITE}6.${C_RESET}  Show Status               ${C_GRAY}- View dashboard${C_RESET}"
+    echo -e "  ${C_WHITE}7.${C_RESET}  Start Panel v1.0          ${C_GRAY}- Direct node mode${C_RESET}"
+    echo -e "  ${C_WHITE}8.${C_RESET}  Start Node Daemon v1.0    ${C_GRAY}- Direct node mode${C_RESET}"
+    echo -e "  ${C_WHITE}9.${C_RESET}  Uninstall Panel           ${C_GRAY}- Remove installation${C_RESET}"
+    echo -e "  ${C_WHITE}0.${C_RESET}  Exit"
     echo ""
     echo -e "  ${C_GRAY}AstroWax Panel v1.80 | AWP = ASTROWAX PANEL | Itzytansh${C_RESET}"
     echo ""
-    echo -ne "  ${C_CYAN}Select [1-8]: ${C_RESET}"
+    echo -ne "  ${C_CYAN}Select [0-9]: ${C_RESET}"
     read -r CHOICE || break
     case "$CHOICE" in
         1) choose_version && { [ "$SELECTED_VERSION" = "1.0" ] && install_panel_v10 || install_panel_v180; }; echo ""; read -p "  Press Enter to continue..." ;;
@@ -743,8 +876,10 @@ while true; do
         4) stop_panel; echo ""; read -p "  Press Enter to continue..." ;;
         5) restart_panel; echo ""; read -p "  Press Enter to continue..." ;;
         6) show_status; echo ""; read -p "  Press Enter to continue..." ;;
-        7) uninstall_panel; echo ""; read -p "  Press Enter to continue..." ;;
-        8) echo ""; echo -e "  ${C_GRAY}Goodbye. Thanks for using AstroWax Panel.${C_RESET}"; echo ""; exit 0 ;;
+        7) start_v10_panel ;;
+        8) start_v10_node ;;
+        9) uninstall_panel; echo ""; read -p "  Press Enter to continue..." ;;
+        0) echo ""; echo -e "  ${C_GRAY}Goodbye. Thanks for using AstroWax Panel.${C_RESET}"; echo ""; exit 0 ;;
         *) log_err "Invalid option"; sleep 1 ;;
     esac
 done
