@@ -30,7 +30,7 @@ log_err()     { echo -e "  ${C_RED}x${C_RESET} ${C_RED}$1${C_RESET}"; }
 log_step()    { echo -e "  ${C_BLUE}>${C_RESET} ${C_BOLD}$1${C_RESET}"; }
 
 # ───────────────────────────────────────────────────────────────────
-#  nvm loader — ensures node 20 available in every subshell
+#  nvm PATH loader
 # ───────────────────────────────────────────────────────────────────
 load_nvm_path() {
     export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
@@ -531,7 +531,7 @@ install_panel_v10() {
     esac
 }
 
-# ✅ V1.0 PANEL INSTALL
+# ✅ V1.0 PANEL INSTALL (with migration route auto-created)
 install_v10_panel() {
     echo ""
     log_step "Installing AstroWax Panel v1.0..."
@@ -576,10 +576,139 @@ npm run seed
 npm run createUser
 '
 
+    # Auto-create the migration route
+    local ACTUAL_PANEL_DIR=""
     if [ -d "$HOME/AstroWax-Panel/panel/panel" ] && [ -f "$HOME/AstroWax-Panel/panel/panel/package.json" ]; then
-        log_ok "Panel v1.0 installed at: $HOME/AstroWax-Panel/panel/panel"
+        ACTUAL_PANEL_DIR="$HOME/AstroWax-Panel/panel/panel"
     elif [ -d "$HOME/AstroWax-Panel/panel" ] && [ -f "$HOME/AstroWax-Panel/panel/package.json" ]; then
-        log_ok "Panel v1.0 installed at: $HOME/AstroWax-Panel/panel"
+        ACTUAL_PANEL_DIR="$HOME/AstroWax-Panel/panel"
+    fi
+
+    if [ -n "$ACTUAL_PANEL_DIR" ]; then
+        log_ok "Panel v1.0 installed at: $ACTUAL_PANEL_DIR"
+
+        # Create migrate route
+        local ROUTES_DIR="$ACTUAL_PANEL_DIR/routes"
+        local ADMIN_DIR="$ROUTES_DIR/Admin"
+        [ -d "$ROUTES_DIR" ] || mkdir -p "$ROUTES_DIR"
+        [ -d "$ADMIN_DIR" ] || mkdir -p "$ADMIN_DIR"
+
+        log_step "Creating migration route..."
+        cat > "$ADMIN_DIR/migrate.js" << 'MIGRATE_EOF'
+const express = require("express");
+const router = express.Router();
+const { exec } = require("child_process");
+const path = require("path");
+const fs = require("fs-extra");
+const os = require("os");
+
+function requireAdmin(req, res, next) {
+  console.log("[migrate] Endpoint hit");
+  const user = req.user || req.session?.user || req.session?.passport?.user || req.session?.passportUser || req.session?.account;
+  if (user) {
+    const role = user.role || user.userRole || user.type || user.accountRole;
+    if (role && role !== "admin" && role !== "owner") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    return next();
+  }
+  if (req.session && Object.keys(req.session).length > 0) return next();
+  return res.status(403).json({ error: "Admin access required" });
+}
+
+router.post("/api/admin/migrate-to-v180", requireAdmin, async (req, res) => {
+  const HOME = os.homedir();
+  const v180Dir = path.join(HOME, "astrowax-v180");
+  const v180PanelDir = path.join(v180Dir, "panel", "astrowax-panel");
+  const v1PanelDir = process.cwd();
+  const backupDir = path.join(HOME, "astrowax-v1-backup-" + Date.now());
+
+  console.log("[migrate] Starting:", v1PanelDir, "→", v180PanelDir);
+
+  try {
+    await fs.ensureDir(backupDir);
+    for (const item of ["data", "config.json", ".env", "storage", "database.sqlite", "users.json", "sessions.db"]) {
+      const src = path.join(v1PanelDir, item);
+      if (await fs.pathExists(src)) await fs.copy(src, path.join(backupDir, item));
+    }
+
+    const installCmd = `
+      set -e
+      export DEBIAN_FRONTEND=noninteractive
+      export NVM_DIR="\${HOME}/.nvm"
+      [ -s "/usr/local/share/nvm/nvm.sh" ] && export NVM_DIR=/usr/local/share/nvm
+      [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
+      command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+      [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
+      nvm install 20 >/dev/null 2>&1 || true
+      nvm use 20 >/dev/null 2>&1 || true
+      rm -rf "${v180Dir}"
+      mkdir -p "${v180Dir}"
+      cd "${v180Dir}"
+      curl -fsSL "https://github.com/AstroVoidHostDev/astrowax/raw/main/panel.zip" -o panel.zip
+      unzip -oq panel.zip
+      rm -f panel.zip
+      if [ -d "${v180PanelDir}" ]; then cd "${v180PanelDir}"
+      elif [ -d "${v180Dir}/panel" ]; then cd "${v180Dir}/panel"
+      else echo "PANEL_DIR_NOT_FOUND"; exit 1; fi
+      mkdir -p .data
+      [ -d "${backupDir}/data" ] && cp -r "${backupDir}/data/"* .data/ 2>/dev/null || true
+      [ -f "${backupDir}/users.json" ] && cp "${backupDir}/users.json" .data/users.json 2>/dev/null || true
+      [ -f "${backupDir}/database.sqlite" ] && cp "${backupDir}/database.sqlite" .data/database.sqlite 2>/dev/null || true
+      [ -f "${backupDir}/.env" ] && cp "${backupDir}/.env" .env
+      [ -f .env ] || echo "PORT=6767" > .env
+      grep -q "^PORT=" .env || echo "PORT=6767" >> .env
+      grep -q "^JWT_SECRET=" .env || echo "JWT_SECRET=\$(head -c 32 /dev/urandom | base64)" >> .env
+      echo "legacy-peer-deps=true" > .npmrc
+      rm -rf node_modules package-lock.json
+      npm cache clean --force >/dev/null 2>&1 || true
+      npm install --legacy-peer-deps --no-audit --no-fund >/dev/null 2>&1
+      NODE_OPTIONS="--max-old-space-size=2048" npm run build >/dev/null 2>&1
+      [ -f dist/server.cjs ] || { echo "BUILD_FAILED"; exit 1; }
+      echo "INSTALL_OK"
+    `;
+
+    exec(installCmd, { timeout: 900000, maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err || !stdout.includes("INSTALL_OK")) {
+        return res.status(500).json({ error: "Installation failed", details: (stderr || err?.message || "").slice(-500) });
+      }
+
+      res.json({ success: true, message: "Migration complete", v180Dir: v180PanelDir });
+
+      setTimeout(() => {
+        const swapCmd = `
+          pkill -f "node .*AstroWax-Panel" 2>/dev/null || true
+          sleep 2
+          cd "${v180PanelDir}"
+          export NVM_DIR="\${HOME}/.nvm"
+          [ -s "/usr/local/share/nvm/nvm.sh" ] && export NVM_DIR=/usr/local/share/nvm
+          [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
+          nvm use 20 >/dev/null 2>&1 || true
+          command -v pm2 >/dev/null 2>&1 || npm install -g pm2 >/dev/null 2>&1 || true
+          cat > ecosystem.config.cjs << 'EOFPM2'
+module.exports = { apps: [{ name: "astrowax-main", script: "npm", args: "start", instances: 1, autorestart: true, env: { NODE_ENV: "production", PORT: 6767 } }] };
+EOFPM2
+          pm2 delete astrowax-main 2>/dev/null || true
+          pm2 delete AstroWax-Panel 2>/dev/null || true
+          pm2 start ecosystem.config.cjs
+          pm2 save --force 2>/dev/null || true
+        `;
+        exec(swapCmd, { timeout: 180000 }, () => {});
+
+        setTimeout(async () => {
+          try { await fs.remove(path.join(HOME, "AstroWax-Panel")); } catch (e) {}
+        }, 8000);
+      }, 1000);
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Migration failed", details: err.message });
+  }
+});
+
+module.exports = router;
+MIGRATE_EOF
+
+        log_ok "Migration route created at: $ADMIN_DIR/migrate.js"
     else
         log_err "Panel v1.0 install failed"
         return 1
@@ -630,10 +759,7 @@ rm -rf node_modules package-lock.json
 npm cache clean --force
 echo "legacy-peer-deps=true" > .npmrc
 
-# ✅ Install tailwindcss FIRST (fixes "Cannot find module tailwindcss/plugin")
 npm install tailwindcss @tailwindcss/forms --legacy-peer-deps || true
-
-# Then full install
 npm install --legacy-peer-deps
 '
 
@@ -648,28 +774,13 @@ npm install --legacy-peer-deps
     log_ok "Node Daemon installed at: $ACTUAL_NODE_DIR"
 
     echo ""
-    echo -e "  ${C_YELLOW}${C_BOLD}Next: Configure the daemon with your panel${C_RESET}"
-    echo -e "  ${C_GRAY}──────────────────────────────────────────────────────${C_RESET}"
-    echo -e "  ${C_WHITE}1.${C_RESET} Go to your V1.0 Panel admin settings"
-    echo -e "  ${C_WHITE}2.${C_RESET} Copy the ${C_CYAN}API Key${C_RESET} and ${C_CYAN}Panel URL${C_RESET}"
-    echo -e "  ${C_WHITE}3.${C_RESET} Run the configure command"
-    echo -e "  ${C_GRAY}──────────────────────────────────────────────────────${C_RESET}"
-    echo ""
-
     if [ -t 0 ]; then
         echo -ne "  ${C_CYAN}Configure daemon now? (y/N): ${C_RESET}"; read -r CONFIG_NOW
         if [[ "$CONFIG_NOW" =~ ^[Yy]$ ]]; then
-            echo ""
             echo -ne "  ${C_CYAN}Panel URL (default: http://localhost:3000): ${C_RESET}"; read -r PANEL_URL
             [ -z "$PANEL_URL" ] && PANEL_URL="http://localhost:3000"
-
             echo -ne "  ${C_CYAN}API Key: ${C_RESET}"; read -r API_KEY
-
             if [ -n "$API_KEY" ]; then
-                echo ""
-                log_step "Running: npm run configure -- --panel $PANEL_URL --key $API_KEY"
-                echo ""
-
                 bash -c "cd '$ACTUAL_NODE_DIR'
                     export NVM_DIR=\"\${NVM_DIR:-\$HOME/.nvm}\"
                     [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm
@@ -677,20 +788,13 @@ npm install --legacy-peer-deps
                     nvm use 20 >/dev/null 2>&1 || true
                     npm run configure -- --panel '$PANEL_URL' --key '$API_KEY'
                 "
-
-                if [ $? -eq 0 ]; then
-                    log_ok "Daemon configured successfully!"
-                else
-                    log_err "Configure failed — run manually:"
-                    echo -e "  ${C_WHITE}cd $ACTUAL_NODE_DIR${C_RESET}"
-                    echo -e "  ${C_WHITE}npm run configure -- --panel $PANEL_URL --key $API_KEY${C_RESET}"
-                fi
+                [ $? -eq 0 ] && log_ok "Daemon configured!" || log_err "Configure failed"
             fi
         fi
     fi
 
     echo ""
-    echo -e "  ${C_GRAY}To start later: ${C_WHITE}cd $ACTUAL_NODE_DIR && node .${C_RESET}"
+    echo -e "  ${C_GRAY}Start: ${C_WHITE}cd $ACTUAL_NODE_DIR && node .${C_RESET}"
     echo -e "  ${C_GRAY}Or menu option: ${C_WHITE}Start Node Daemon v1.0${C_RESET}"
     echo ""
 }
@@ -699,6 +803,9 @@ npm install --legacy-peer-deps
 start_v10_panel() {
     print_banner
     print_header "Start Panel v1.0" "Legacy mode"
+
+    pkill -f "node .*AstroWax-Panel" 2>/dev/null || true
+    sleep 2
 
     local TARGET_DIR=""
     if [ -f "$HOME/AstroWax-Panel/panel/panel/package.json" ]; then
@@ -731,7 +838,7 @@ start_v10_panel() {
     "
 }
 
-# ✅ START V1.0 NODE DAEMON (with tailwindcss fix)
+# ✅ START V1.0 NODE DAEMON
 start_v10_node() {
     print_banner
     print_header "Start Node Daemon v1.0" "Legacy mode"
@@ -749,7 +856,6 @@ start_v10_node() {
     log_info "Directory: $TARGET_DIR"
     echo ""
 
-    # Configuration check
     if [ ! -f "$TARGET_DIR/config.json" ] && [ ! -f "$TARGET_DIR/.env" ] && [ ! -f "$TARGET_DIR/config.yml" ]; then
         log_warn "Daemon may not be configured yet"
         if [ -t 0 ]; then
@@ -758,7 +864,6 @@ start_v10_node() {
                 echo -ne "  ${C_CYAN}Panel URL (default: http://localhost:3000): ${C_RESET}"; read -r PURL
                 [ -z "$PURL" ] && PURL="http://localhost:3000"
                 echo -ne "  ${C_CYAN}API Key: ${C_RESET}"; read -r AKEY
-
                 if [ -n "$AKEY" ]; then
                     bash -c "cd '$TARGET_DIR'
                         export NVM_DIR=\"\${NVM_DIR:-\$HOME/.nvm}\"
@@ -810,20 +915,11 @@ configure_v10_node() {
 
     log_info "Directory: $TARGET_DIR"
     echo ""
-
     echo -ne "  ${C_CYAN}Panel URL (default: http://localhost:3000): ${C_RESET}"; read -r PURL
     [ -z "$PURL" ] && PURL="http://localhost:3000"
-
     echo -ne "  ${C_CYAN}API Key: ${C_RESET}"; read -r AKEY
 
-    if [ -z "$AKEY" ]; then
-        log_err "API key required"
-        return 1
-    fi
-
-    echo ""
-    log_step "Running: npm run configure -- --panel $PURL --key $AKEY"
-    echo ""
+    [ -z "$AKEY" ] && { log_err "API key required"; return 1; }
 
     bash -c "cd '$TARGET_DIR'
         export NVM_DIR=\"\${NVM_DIR:-\$HOME/.nvm}\"
@@ -832,13 +928,7 @@ configure_v10_node() {
         nvm use 20 >/dev/null 2>&1 || true
         npm run configure -- --panel '$PURL' --key '$AKEY'
     "
-
-    if [ $? -eq 0 ]; then
-        log_ok "Daemon configured!"
-    else
-        log_err "Configure failed"
-        return 1
-    fi
+    [ $? -eq 0 ] && log_ok "Configured!" || log_err "Failed"
 }
 
 # ───────────────────────────────────────────────────────────────────
@@ -903,7 +993,7 @@ uninstall_panel() {
     echo -ne "  Delete panel files and data? (y/N): "; read -r DELETE_DATA
 
     if [[ "$DELETE_DATA" =~ ^[Yy]$ ]]; then
-        print_header "Removing Files" "Cleaning up installation"
+        print_header "Removing Files" "Cleaning up"
         cd "$HOME" || cd /tmp || cd / || true
 
         rm -rf "$HOME/panel" 2>/dev/null || true
@@ -940,7 +1030,7 @@ uninstall_panel() {
 
         log_ok "Files removed"
     else
-        log_info "Panel files kept"
+        log_info "Files kept"
     fi
 
     echo ""
