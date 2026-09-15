@@ -63,18 +63,18 @@ load_nvm_path() {
 }
 
 # ───────────────────────────────────────────────────────────────────
-#  Banner
+#  Banner — ASTROWAX PANEL (new logo)
 # ───────────────────────────────────────────────────────────────────
 print_banner() {
     clear 2>/dev/null || true
     echo -e "${C_CYAN}${C_BOLD}"
     cat << 'EOF'
-      █████╗ ██╗    ██╗██████╗ 
-     ██╔══██╗██║    ██║██╔══██╗
-     ███████║██║ █╗ ██║██████╔╝
-     ██╔══██║██║███╗██║██╔═══╝ 
-     ██║  ██║╚███╔███╔╝██║     
-     ╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝     
+ █████╗ ███████╗████████╗██████╗  ██████╗ ██╗    ██╗ █████╗ ██╗  ██╗
+██╔══██╗██╔════╝╚══██╔══╝██╔══██╗██╔═══██╗██║    ██║██╔══██╗╚██╗██╔╝
+███████║███████╗   ██║   ██████╔╝██║   ██║██║ █╗ ██║███████║ ╚███╔╝ 
+██╔══██║╚════██║   ██║   ██╔══██╗██║   ██║██║███╗██║██╔══██║ ██╔██╗ 
+██║  ██║███████║   ██║   ██║  ██║╚██████╔╝╚███╔███╔╝██║  ██║██╔╝ ██╗
+╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝  ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝
 EOF
     echo -e "${C_RESET}"
     echo -e "  ${C_WHITE}${C_BOLD}ASTROWAX PANEL${C_RESET}  ${C_GRAY}—  AWP = ASTROWAX PANEL${C_RESET}"
@@ -527,7 +527,7 @@ install_panel_v180() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
-# ✅ V1.0 INSTALL — PROPERLY INSTALLS V1.0 (not 1.80)
+#  Install v1.0
 # ═══════════════════════════════════════════════════════════════════
 install_panel_v10() {
     print_banner
@@ -549,7 +549,6 @@ install_panel_v10() {
     esac
 }
 
-# ✅ V1.0 PANEL INSTALL
 install_v10_panel() {
     echo ""
     log_step "Installing AstroWax Panel v1.0..."
@@ -560,7 +559,6 @@ export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -y
 sudo apt-get install -y curl git unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config libsqlite3-dev sqlite3
 
-# Install nvm + Node 20
 (command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash)
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm
@@ -568,22 +566,17 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 nvm install 20
 nvm use 20
 
-# Clone V1.0 repo
 rm -rf ~/AstroWax-Panel
 git clone https://github.com/AstroVoidHostDev/AstroWax-Panel ~/AstroWax-Panel
 cd ~/AstroWax-Panel
-
-# Extract panel.zip
 unzip -oq panel.zip
 cd panel
 
-# Install deps
 rm -rf node_modules package-lock.json
 npm cache clean --force
 npm install --legacy-peer-deps
 npm install connect-sqlite3 sqlite3
 
-# Setup database
 npm run seed
 npm run createUser
 '
@@ -598,7 +591,6 @@ npm run createUser
     fi
 }
 
-# ✅ V1.0 NODE DAEMON INSTALL
 install_v10_node() {
     echo ""
     log_step "Installing AstroWax Node Daemon..."
@@ -609,7 +601,6 @@ export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -y
 sudo apt-get install -y curl git zip unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config
 
-# Install nvm + Node 20
 (command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash)
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm
@@ -617,19 +608,14 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 nvm install 20
 nvm use 20
 
-# Clone Daemon repo
 rm -rf ~/WaxDaemon
 git clone https://github.com/AstroVoidHostDev/WaxDaemon ~/WaxDaemon
 cd ~/WaxDaemon
-
-# Extract
 unzip -oq waxdaemon.zip
 cd daemon/daemon
 
-# Rename if needed
 [ -f index.js.txt ] && mv index.js.txt index.js || true
 
-# Install deps
 rm -rf node_modules package-lock.json
 npm cache clean --force
 npm install --legacy-peer-deps
@@ -648,7 +634,6 @@ npm install --legacy-peer-deps
     fi
 }
 
-# ✅ START PANEL V1.0 (from your command)
 start_v10_panel() {
     print_banner
     print_header "Start Panel v1.0" "Legacy mode"
@@ -680,7 +665,6 @@ start_v10_panel() {
     "
 }
 
-# ✅ START NODE DAEMON V1.0 (from your command)
 start_v10_node() {
     print_banner
     print_header "Start Node Daemon v1.0" "Legacy mode"
@@ -775,7 +759,6 @@ uninstall_panel() {
 
     if [[ "$DELETE_DATA" =~ ^[Yy]$ ]]; then
         print_header "Removing Files" "Cleaning up installation"
-
         cd "$HOME" || cd /tmp || cd / || true
 
         for path in \
