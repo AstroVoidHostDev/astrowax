@@ -40,7 +40,7 @@ else
 fi
 
 # ───────────────────────────────────────────────────────────────────
-#  Logging - Clean
+#  Logging
 # ───────────────────────────────────────────────────────────────────
 log_info()    { echo -e "  ${C_GRAY}•${C_RESET} $1"; }
 log_ok()      { echo -e "  ${C_GREEN}✓${C_RESET} ${C_WHITE}$1${C_RESET}"; }
@@ -55,7 +55,7 @@ load_nvm_path() {
     export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
     [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" >/dev/null 2>&1
     [ -s "/usr/local/share/nvm/nvm.sh" ] && { export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh" >/dev/null 2>&1; }
-    for p in "$HOME/.nvm/versions/node/v20"*"/bin" "$HOME/.nvm/versions/node/v22"*"/bin"; do
+    for p in "$HOME/.nvm/versions/node/v20"*"/bin" "$HOME/.nvm/versions/node/v22"*"/bin" "/usr/local/share/nvm/versions/node/v20"*"/bin"; do
         [ -d "$p" ] && case ":$PATH:" in *":$p:"*) ;; *) export PATH="$p:$PATH" ;; esac
     done
     case ":$PATH:" in *":/usr/local/bin:"*) ;; *) export PATH="/usr/local/bin:$PATH" ;; esac
@@ -63,7 +63,7 @@ load_nvm_path() {
 }
 
 # ───────────────────────────────────────────────────────────────────
-#  Banner — ASTROWAX PANEL (new logo)
+#  Banner
 # ───────────────────────────────────────────────────────────────────
 print_banner() {
     clear 2>/dev/null || true
@@ -167,8 +167,6 @@ MAIN_PROCESS="astrowax-main"
 MAIN_CONTAINER="astrowax-main"
 MAIN_PORT="6767"
 SFTP_PORT="6868"
-V1_PANEL_DIR="$HOME/AstroWax-Panel/panel"
-V1_NODE_DIR="$HOME/WaxDaemon/daemon/daemon"
 SELECTED_VERSION=""
 
 PANEL_START_DIR="$(pwd)"
@@ -191,6 +189,9 @@ check_system_deps() {
     command -v curl &> /dev/null && command -v git &> /dev/null && command -v unzip &> /dev/null
 }
 
+# ═══════════════════════════════════════════════════════════════════
+#  V1.80 DOWNLOAD (extracts to panel/astrowax-panel/)
+# ═══════════════════════════════════════════════════════════════════
 download_panel_v180() {
     local archive_url="https://github.com/${GH_USER}/${GH_REPO}/raw/${GH_BRANCH}/${GH_ARCHIVE}"
     local main_archive_url="https://github.com/${GH_USER}/${GH_REPO}/archive/refs/heads/${GH_BRANCH}.zip"
@@ -343,7 +344,7 @@ build_application() {
 }
 
 # ───────────────────────────────────────────────────────────────────
-#  Panel Control (v1.80)
+#  Panel Control v1.80
 # ───────────────────────────────────────────────────────────────────
 start_panel_node() {
     local TARGET=$1
@@ -527,7 +528,7 @@ install_panel_v180() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
-#  Install v1.0
+#  Install v1.0 (FIXED: auto-detects panel/ vs panel/panel/)
 # ═══════════════════════════════════════════════════════════════════
 install_panel_v10() {
     print_banner
@@ -549,6 +550,7 @@ install_panel_v10() {
     esac
 }
 
+# ✅ V1.0 PANEL INSTALL (auto-detect panel/panel/)
 install_v10_panel() {
     echo ""
     log_step "Installing AstroWax Panel v1.0..."
@@ -559,6 +561,7 @@ export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -y
 sudo apt-get install -y curl git unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config libsqlite3-dev sqlite3
 
+# Install nvm + Node 20
 (command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash)
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm
@@ -566,31 +569,61 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 nvm install 20
 nvm use 20
 
+# Clone V1.0 repo
 rm -rf ~/AstroWax-Panel
 git clone https://github.com/AstroVoidHostDev/AstroWax-Panel ~/AstroWax-Panel
 cd ~/AstroWax-Panel
-unzip -oq panel.zip
-cd panel
 
+# Extract
+unzip -oq panel.zip
+
+# ✅ AUTO-DETECT correct panel dir (handles panel/panel/ and panel/)
+PANEL_DIR=""
+if [ -f "panel/panel/package.json" ]; then
+    PANEL_DIR="panel/panel"
+elif [ -f "panel/package.json" ]; then
+    PANEL_DIR="panel"
+else
+    FOUND=$(find . -maxdepth 4 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | head -1)
+    [ -n "$FOUND" ] && PANEL_DIR=$(dirname "$FOUND")
+fi
+
+if [ -z "$PANEL_DIR" ]; then
+    echo "❌ Could not find package.json in extracted files"
+    ls -la panel/ 2>/dev/null
+    exit 1
+fi
+
+echo "✅ Found panel at: ~/AstroWax-Panel/$PANEL_DIR"
+cd "$PANEL_DIR"
+
+# Install deps
 rm -rf node_modules package-lock.json
 npm cache clean --force
+echo "legacy-peer-deps=true" > .npmrc
 npm install --legacy-peer-deps
 npm install connect-sqlite3 sqlite3
 
+# Setup database
 npm run seed
 npm run createUser
 '
 
-    if [ -d "$V1_PANEL_DIR" ]; then
-        log_ok "Panel v1.0 installed at: $V1_PANEL_DIR"
-        echo ""
-        echo -e "  ${C_GRAY}Start it with menu option: ${C_WHITE}Start Panel v1.0${C_RESET}"
+    # Verify where it actually is
+    if [ -d "$HOME/AstroWax-Panel/panel/panel" ] && [ -f "$HOME/AstroWax-Panel/panel/panel/package.json" ]; then
+        log_ok "Panel v1.0 installed at: $HOME/AstroWax-Panel/panel/panel"
+    elif [ -d "$HOME/AstroWax-Panel/panel" ] && [ -f "$HOME/AstroWax-Panel/panel/package.json" ]; then
+        log_ok "Panel v1.0 installed at: $HOME/AstroWax-Panel/panel"
     else
-        log_err "Panel v1.0 install failed"
+        log_err "Panel v1.0 install failed — directory not found"
         return 1
     fi
+
+    echo ""
+    echo -e "  ${C_GRAY}Start it with menu option: ${C_WHITE}Start Panel v1.0${C_RESET}"
 }
 
+# ✅ V1.0 NODE DAEMON INSTALL (auto-detect daemon/daemon/)
 install_v10_node() {
     echo ""
     log_step "Installing AstroWax Node Daemon..."
@@ -601,6 +634,7 @@ export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -y
 sudo apt-get install -y curl git zip unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config
 
+# Install nvm + Node 20
 (command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash)
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm
@@ -608,48 +642,82 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 nvm install 20
 nvm use 20
 
+# Clone Daemon repo
 rm -rf ~/WaxDaemon
 git clone https://github.com/AstroVoidHostDev/WaxDaemon ~/WaxDaemon
 cd ~/WaxDaemon
-unzip -oq waxdaemon.zip
-cd daemon/daemon
 
+# Extract
+unzip -oq waxdaemon.zip
+
+# ✅ AUTO-DETECT daemon dir
+DAEMON_DIR=""
+if [ -f "daemon/daemon/package.json" ]; then
+    DAEMON_DIR="daemon/daemon"
+elif [ -f "daemon/package.json" ]; then
+    DAEMON_DIR="daemon"
+else
+    FOUND=$(find . -maxdepth 4 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | head -1)
+    [ -n "$FOUND" ] && DAEMON_DIR=$(dirname "$FOUND")
+fi
+
+if [ -z "$DAEMON_DIR" ]; then
+    echo "❌ Could not find package.json"
+    exit 1
+fi
+
+echo "✅ Found daemon at: ~/WaxDaemon/$DAEMON_DIR"
+cd "$DAEMON_DIR"
+
+# Rename index
 [ -f index.js.txt ] && mv index.js.txt index.js || true
 
+# Install deps
 rm -rf node_modules package-lock.json
 npm cache clean --force
+echo "legacy-peer-deps=true" > .npmrc
 npm install --legacy-peer-deps
 '
 
-    if [ -d "$V1_NODE_DIR" ]; then
-        log_ok "Node Daemon installed at: $V1_NODE_DIR"
-        echo ""
-        echo -e "  ${C_YELLOW}${C_BOLD}Next step:${C_RESET}"
-        echo -e "  ${C_WHITE}1.${C_RESET} Edit config: ${C_CYAN}cd $V1_NODE_DIR${C_RESET}"
-        echo -e "  ${C_WHITE}2.${C_RESET} Start daemon: ${C_CYAN}node .${C_RESET}"
-        echo -e "  ${C_WHITE}${C_RESET}Or use menu option: ${C_WHITE}Start Node Daemon v1.0${C_RESET}"
+    if [ -d "$HOME/WaxDaemon/daemon/daemon" ] && [ -f "$HOME/WaxDaemon/daemon/daemon/package.json" ]; then
+        log_ok "Node Daemon installed at: $HOME/WaxDaemon/daemon/daemon"
+    elif [ -d "$HOME/WaxDaemon/daemon" ] && [ -f "$HOME/WaxDaemon/daemon/package.json" ]; then
+        log_ok "Node Daemon installed at: $HOME/WaxDaemon/daemon"
     else
         log_err "Node Daemon install failed"
         return 1
     fi
+
+    echo ""
+    echo -e "  ${C_YELLOW}${C_BOLD}Next step:${C_RESET}"
+    echo -e "  ${C_WHITE}1.${C_RESET} Edit config: ${C_CYAN}cd ~/WaxDaemon/daemon/daemon${C_RESET}"
+    echo -e "  ${C_WHITE}2.${C_RESET} Start daemon: ${C_CYAN}node .${C_RESET}"
+    echo -e "  ${C_WHITE}${C_RESET}Or use menu option: ${C_WHITE}Start Node Daemon v1.0${C_RESET}"
 }
 
+# ✅ START V1.0 PANEL (auto-detects path)
 start_v10_panel() {
     print_banner
     print_header "Start Panel v1.0" "Legacy mode"
 
-    if [ ! -d "$V1_PANEL_DIR" ]; then
-        log_err "Panel v1.0 not installed at $V1_PANEL_DIR"
+    # Auto-detect correct path
+    local TARGET_DIR=""
+    if [ -f "$HOME/AstroWax-Panel/panel/panel/package.json" ]; then
+        TARGET_DIR="$HOME/AstroWax-Panel/panel/panel"
+    elif [ -f "$HOME/AstroWax-Panel/panel/package.json" ]; then
+        TARGET_DIR="$HOME/AstroWax-Panel/panel"
+    else
+        log_err "Panel v1.0 not installed"
         log_info "Install it first: Menu option 1 → Version 2"
         return 1
     fi
 
-    log_info "Directory: $V1_PANEL_DIR"
+    log_info "Directory: $TARGET_DIR"
     echo ""
     log_step "Running pre-flight (apt install npm + npm install)..."
     echo ""
 
-    bash -c "cd '$V1_PANEL_DIR'
+    bash -c "cd '$TARGET_DIR'
         sudo apt-get update -y -q >/dev/null 2>&1
         sudo apt-get install -y npm >/dev/null 2>&1 || true
         export NVM_DIR=\"\${NVM_DIR:-\$HOME/.nvm}\"
@@ -665,22 +733,28 @@ start_v10_panel() {
     "
 }
 
+# ✅ START V1.0 NODE DAEMON (auto-detects path)
 start_v10_node() {
     print_banner
     print_header "Start Node Daemon v1.0" "Legacy mode"
 
-    if [ ! -d "$V1_NODE_DIR" ]; then
-        log_err "Node Daemon not installed at $V1_NODE_DIR"
+    local TARGET_DIR=""
+    if [ -f "$HOME/WaxDaemon/daemon/daemon/package.json" ]; then
+        TARGET_DIR="$HOME/WaxDaemon/daemon/daemon"
+    elif [ -f "$HOME/WaxDaemon/daemon/package.json" ]; then
+        TARGET_DIR="$HOME/WaxDaemon/daemon"
+    else
+        log_err "Node Daemon not installed"
         log_info "Install it first: Menu option 1 → Version 2 → Option 2 or 3"
         return 1
     fi
 
-    log_info "Directory: $V1_NODE_DIR"
+    log_info "Directory: $TARGET_DIR"
     echo ""
     log_step "Running pre-flight (apt install npm + npm install)..."
     echo ""
 
-    bash -c "cd '$V1_NODE_DIR'
+    bash -c "cd '$TARGET_DIR'
         sudo apt-get update -y -q >/dev/null 2>&1
         sudo apt-get install -y npm >/dev/null 2>&1 || true
         export NVM_DIR=\"\${NVM_DIR:-\$HOME/.nvm}\"
@@ -727,7 +801,7 @@ update_panel() {
 }
 
 # ───────────────────────────────────────────────────────────────────
-#  Uninstall
+#  Uninstall — removes v1.80 AND v1.0 files
 # ───────────────────────────────────────────────────────────────────
 uninstall_panel() {
     print_banner
@@ -761,36 +835,39 @@ uninstall_panel() {
         print_header "Removing Files" "Cleaning up installation"
         cd "$HOME" || cd /tmp || cd / || true
 
-        for path in \
-            "$HOME/panel" \
-            "$HOME/astrowax-panel" \
-            "$HOME/AstroWax-Panel" \
-            "$HOME/WaxDaemon" \
-            "$HOME/$WORK_DIR_NAME" \
-            "/root/panel" \
-            "/opt/panel" \
-            "/var/www/panel"
-        do
-            [ -e "$path" ] && rm -rf "$path" 2>/dev/null || true
-        done
+        # ✅ V1.80 paths
+        rm -rf "$HOME/panel" 2>/dev/null || true
+        rm -rf "$HOME/astrowax-panel" 2>/dev/null || true
+        rm -rf "$HOME/$WORK_DIR_NAME" 2>/dev/null || true
 
+        # ✅ V1.0 paths (includes panel/panel/ and daemon/daemon/)
+        rm -rf "$HOME/AstroWax-Panel" 2>/dev/null || true
+        rm -rf "$HOME/WaxDaemon" 2>/dev/null || true
+
+        # Extra paths
+        rm -rf /root/panel /root/AstroWax-Panel /root/WaxDaemon 2>/dev/null || true
+        rm -rf /opt/panel /opt/AstroWax-Panel 2>/dev/null || true
+        rm -rf /var/www/panel /var/www/AstroWax-Panel 2>/dev/null || true
+
+        # All users
         for userdir in /home/*; do
-            [ -d "$userdir/panel" ] && rm -rf "$userdir/panel" 2>/dev/null || true
-            [ -d "$userdir/astrowax-panel" ] && rm -rf "$userdir/astrowax-panel" 2>/dev/null || true
+            rm -rf "$userdir/panel" "$userdir/AstroWax-Panel" "$userdir/WaxDaemon" 2>/dev/null || true
         done
 
+        # If script started from a panel dir
         if [ -n "$PANEL_START_DIR" ]; then
             case "$PANEL_START_DIR" in
-                *panel*|*astrowax*)
+                *panel*|*astrowax*|*AstroWax*|*WaxDaemon*)
                     rm -rf "$PANEL_START_DIR" 2>/dev/null || true
                     local parent=$(dirname "$PANEL_START_DIR")
                     case "$parent" in
-                        *panel|*astrowax) rm -rf "$parent" 2>/dev/null || true ;;
+                        *panel|*astrowax|*AstroWax|*WaxDaemon) rm -rf "$parent" 2>/dev/null || true ;;
                     esac
                     ;;
             esac
         fi
 
+        # Temp files
         rm -rf /tmp/awp_* /tmp/astrowax* /tmp/panel*.zip 2>/dev/null || true
         rm -f "$HOME/panel.zip" 2>/dev/null || true
         rm -rf "$HOME/.pm2/dump.pm2" 2>/dev/null || true
