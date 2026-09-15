@@ -171,12 +171,16 @@ check_system_deps() {
     done
 }
 
+# ═══════════════════════════════════════════════════════════════════
+# ✅ FIXED: Download — properly lands in panel/astrowax-panel/
+# ═══════════════════════════════════════════════════════════════════
 download_panel_v180() {
     local archive_url="https://github.com/${GH_USER}/${GH_REPO}/raw/${GH_BRANCH}/${GH_ARCHIVE}"
     local main_archive_url="https://github.com/${GH_USER}/${GH_REPO}/archive/refs/heads/${GH_BRANCH}.zip"
     local START_DIR=$(pwd)
     rm -rf "$WORK_DIR_NAME" "$GH_ARCHIVE" 2>/dev/null
 
+    # Download panel.zip
     if ! curl -fsSL "$archive_url" -o "$GH_ARCHIVE" 2>/dev/null; then
         curl -fsSL "$main_archive_url" -o "/tmp/${GH_REPO}.zip" 2>/dev/null || return 1
         unzip -q -o "/tmp/${GH_REPO}.zip" -d /tmp/awp_extract 2>/dev/null || return 1
@@ -186,20 +190,27 @@ download_panel_v180() {
         rm -rf /tmp/awp_extract "/tmp/${GH_REPO}.zip"
     fi
 
-    mkdir -p "$WORK_DIR_NAME"
-    unzip -q -o "$GH_ARCHIVE" -d "$WORK_DIR_NAME" 2>/dev/null || return 1
+    # ✅ Extract WITHOUT -d so zip's own panel/ structure lands here
+    unzip -q -o "$GH_ARCHIVE" 2>/dev/null || return 1
     rm -f "$GH_ARCHIVE"
 
-    local actual_panel=$(find "$WORK_DIR_NAME" -maxdepth 5 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | while read f; do
-        grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" "$f" 2>/dev/null && echo "$f" && break
-    done | head -1)
-    [ -z "$actual_panel" ] && return 1
-    local actual_dir=$(dirname "$actual_panel")
-    if [ "$actual_dir" != "$WORK_DIR_NAME/$PANEL_DIR_NAME" ]; then
-        rm -rf "$WORK_DIR_NAME/$PANEL_DIR_NAME"
-        mv "$actual_dir" "$WORK_DIR_NAME/$PANEL_DIR_NAME"
+    # ✅ Check if we have panel/astrowax-panel/ correctly
+    if [ ! -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
+        # Fallback: find the actual panel dir
+        local actual_panel=$(find "$WORK_DIR_NAME" -maxdepth 5 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | while read f; do
+            grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" "$f" 2>/dev/null && echo "$f" && break
+        done | head -1)
+        [ -z "$actual_panel" ] && return 1
+        local actual_dir=$(dirname "$actual_panel")
+        if [ "$actual_dir" != "$WORK_DIR_NAME/$PANEL_DIR_NAME" ]; then
+            rm -rf "$WORK_DIR_NAME/$PANEL_DIR_NAME"
+            mv "$actual_dir" "$WORK_DIR_NAME/$PANEL_DIR_NAME" 2>/dev/null || return 1
+        fi
     fi
-    cd "$START_DIR"
+
+    cd "$START_DIR" || return 1
+    [ -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ] || return 1
+    return 0
 }
 
 install_docker() {
@@ -507,6 +518,9 @@ update_panel() {
     log_ok "Update complete"; show_status
 }
 
+# ═══════════════════════════════════════════════════════════════════
+# ✅ FIXED: Uninstall — removes panel folder FULLY
+# ═══════════════════════════════════════════════════════════════════
 uninstall_panel() {
     print_banner
     print_header "Uninstall Panel" "This will remove AstroWax Panel"
@@ -514,18 +528,76 @@ uninstall_panel() {
     echo ""
     echo -ne "  Type ${C_WHITE}yes${C_RESET} to confirm: "; read -r CONFIRM
     [ "$CONFIRM" != "yes" ] && { log_info "Cancelled"; return 0; }
+
+    print_header "Stopping Services" "Shutting down processes"
     run_pm2 delete "$MAIN_PROCESS" 2>/dev/null || true
     run_pm2 delete astrowax-panel 2>/dev/null || true
-    local DOCKER_CLI=$(get_docker_cmd); $DOCKER_CLI rm -f "astrowax-main" 2>/dev/null || true
+    run_pm2 delete astrowax-admin 2>/dev/null || true
+    run_pm2 save --force 2>/dev/null || true
+
+    local DOCKER_CLI=$(get_docker_cmd)
+    $DOCKER_CLI rm -f "astrowax-main" 2>/dev/null || true
+    $DOCKER_CLI rm -f "astrowax-admin" 2>/dev/null || true
+
     pkill -f "node.*dist/server.cjs" 2>/dev/null || true
-    echo -ne "  Delete files? (y/N): "; read -r DELETE_DATA
+    pkill -f "astrowax" 2>/dev/null || true
+
+    # Free port
+    command -v fuser &> /dev/null && fuser -k ${MAIN_PORT}/tcp 2>/dev/null || true
+
+    log_ok "Services stopped"
+    echo ""
+    echo -ne "  Delete panel files and data? (y/N): "; read -r DELETE_DATA
+
     if [[ "$DELETE_DATA" =~ ^[Yy]$ ]]; then
-        cd "$HOME" || cd /tmp
-        local PANEL_PATH=$(find_panel_dir); [ -n "$PANEL_PATH" ] && rm -rf "$PANEL_PATH"
-        rm -rf "$HOME/$WORK_DIR_NAME" "$HOME/panel" "$HOME/astrowax-panel" 2>/dev/null
+        print_header "Removing Files" "Cleaning up installation"
+
+        # ✅ Move out of the panel dir FIRST (so we can delete it)
+        cd "$HOME" || cd /tmp || cd / || true
+
+        # ✅ Remove the entire panel folder (from anywhere)
+        # 1. From current dir if it was run inside panel/
+        rm -rf "$HOME/panel" 2>/dev/null || true
+        rm -rf "$HOME/astrowax-panel" 2>/dev/null || true
+        rm -rf "$HOME/AstroWax-Panel" 2>/dev/null || true
+        rm -rf "$HOME/WaxDaemon" 2>/dev/null || true
+
+        # 2. Any panel dir found on the system
+        for dir in /root/panel /home/*/panel /opt/panel /var/www/panel; do
+            [ -d "$dir" ] && rm -rf "$dir" 2>/dev/null || true
+        done
+
+        # 3. If we were in a panel dir when script started, use that path
+        if [ -n "$PANEL_START_DIR" ] && [ -d "$PANEL_START_DIR" ]; then
+            case "$PANEL_START_DIR" in
+                */panel/*|*/astrowax-panel/*|*/panel|*/astrowax-panel)
+                    rm -rf "$PANEL_START_DIR" 2>/dev/null || true
+                    # Also remove the parent "panel" folder if it becomes empty-ish
+                    local parent=$(dirname "$PANEL_START_DIR")
+                    case "$parent" in
+                        */panel) rm -rf "$parent" 2>/dev/null || true ;;
+                    esac
+                    ;;
+            esac
+        fi
+
+        # 4. Remove temp files
+        rm -rf /tmp/awp_* /tmp/astrowax* 2>/dev/null || true
+
+        # 5. Remove any leftover zip
+        rm -f "$HOME/panel.zip" /tmp/panel.zip 2>/dev/null || true
+
         log_ok "Files removed"
+    else
+        log_info "Panel files kept"
     fi
-    log_ok "Uninstall complete"
+
+    echo ""
+    echo -e "  ${C_GREEN}${C_BOLD}Uninstall Complete${C_RESET}"
+    echo -e "  ${C_GRAY}──────────────────────────────────────────────────────${C_RESET}"
+    echo -e "  ${C_GRAY}AstroWax Panel has been removed from this system.${C_RESET}"
+    echo -e "  ${C_GRAY}──────────────────────────────────────────────────────${C_RESET}"
+    echo ""
 }
 
 # ───────────────────────────────────────────────────────────────────
@@ -537,6 +609,9 @@ for arg in "$@"; do
         --version=1.80|--v=1.80|-v1.80) VERSION_CHOICE="1" ;;
     esac
 done
+
+# ✅ Remember where user was when script started
+PANEL_START_DIR="$(pwd)"
 
 case "$1" in
     install|main) choose_version && { [ "$SELECTED_VERSION" = "1.0" ] && install_panel_v10 || install_panel_v180; }; exit 0 ;;
