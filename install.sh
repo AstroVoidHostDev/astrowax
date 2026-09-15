@@ -193,7 +193,7 @@ download_panel_v180() {
     rm -f "$GH_ARCHIVE"
 
     if [ ! -f "$WORK_DIR_NAME/$PANEL_DIR_NAME/package.json" ]; then
-        local actual_panel=$(find "$WORK_DIR_NAME" -maxdepth 5 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | while read f; do
+        local actual_panel=$(find "$WORK_DIR_NAME" -maxdepth 6 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | while read f; do
             grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" "$f" 2>/dev/null && echo "$f" && break
         done | head -1)
         [ -z "$actual_panel" ] && return 1
@@ -576,7 +576,7 @@ npm run seed
 npm run createUser
 '
 
-    # Auto-create the migration route
+    # Auto-create migration route
     local ACTUAL_PANEL_DIR=""
     if [ -d "$HOME/AstroWax-Panel/panel/panel" ] && [ -f "$HOME/AstroWax-Panel/panel/panel/package.json" ]; then
         ACTUAL_PANEL_DIR="$HOME/AstroWax-Panel/panel/panel"
@@ -602,8 +602,29 @@ const path = require("path");
 const fs = require("fs-extra");
 const os = require("os");
 
+const migrationState = {
+  running: false,
+  step: "idle",
+  message: "Ready",
+  progress: 0,
+  error: null,
+  v180Dir: null,
+  startedAt: null,
+  finishedAt: null,
+};
+
+function resetState() {
+  migrationState.running = false;
+  migrationState.step = "idle";
+  migrationState.message = "Ready";
+  migrationState.progress = 0;
+  migrationState.error = null;
+  migrationState.v180Dir = null;
+  migrationState.startedAt = null;
+  migrationState.finishedAt = null;
+}
+
 function requireAdmin(req, res, next) {
-  console.log("[migrate] Endpoint hit");
   const user = req.user || req.session?.user || req.session?.passport?.user || req.session?.passportUser || req.session?.account;
   if (user) {
     const role = user.role || user.userRole || user.type || user.accountRole;
@@ -616,99 +637,166 @@ function requireAdmin(req, res, next) {
   return res.status(403).json({ error: "Admin access required" });
 }
 
-router.post("/api/admin/migrate-to-v180", requireAdmin, async (req, res) => {
+router.post("/api/admin/migrate-to-v180/start", requireAdmin, async (req, res) => {
+  if (migrationState.running) {
+    return res.json({ success: false, message: "Already running", state: migrationState });
+  }
+
+  resetState();
+  migrationState.running = true;
+  migrationState.step = "backup";
+  migrationState.message = "Starting migration...";
+  migrationState.progress = 5;
+  migrationState.startedAt = Date.now();
+
+  res.json({ success: true, message: "Started", state: migrationState });
+
   const HOME = os.homedir();
   const v180Dir = path.join(HOME, "astrowax-v180");
-  const v180PanelDir = path.join(v180Dir, "panel", "astrowax-panel");
   const v1PanelDir = process.cwd();
   const backupDir = path.join(HOME, "astrowax-v1-backup-" + Date.now());
 
-  console.log("[migrate] Starting:", v1PanelDir, "→", v180PanelDir);
-
   try {
+    migrationState.message = "Backing up v1.0 data...";
+    migrationState.progress = 10;
     await fs.ensureDir(backupDir);
     for (const item of ["data", "config.json", ".env", "storage", "database.sqlite", "users.json", "sessions.db"]) {
       const src = path.join(v1PanelDir, item);
       if (await fs.pathExists(src)) await fs.copy(src, path.join(backupDir, item));
     }
 
+    migrationState.step = "install";
+    migrationState.message = "Downloading v1.80...";
+    migrationState.progress = 20;
+
     const installCmd = `
       set -e
       export DEBIAN_FRONTEND=noninteractive
       export NVM_DIR="\${HOME}/.nvm"
       [ -s "/usr/local/share/nvm/nvm.sh" ] && export NVM_DIR=/usr/local/share/nvm
-      [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
-      command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-      [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
-      nvm install 20 >/dev/null 2>&1 || true
-      nvm use 20 >/dev/null 2>&1 || true
+      [ -f "\$NVM_DIR/nvm.sh" ] || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+      . "\$NVM_DIR/nvm.sh"
+      nvm install 20
+      nvm use 20
+
       rm -rf "${v180Dir}"
       mkdir -p "${v180Dir}"
       cd "${v180Dir}"
       curl -fsSL "https://github.com/AstroVoidHostDev/astrowax/raw/main/panel.zip" -o panel.zip
       unzip -oq panel.zip
       rm -f panel.zip
-      if [ -d "${v180PanelDir}" ]; then cd "${v180PanelDir}"
-      elif [ -d "${v180Dir}/panel" ]; then cd "${v180Dir}/panel"
-      else echo "PANEL_DIR_NOT_FOUND"; exit 1; fi
+
+      PANEL_JSON=\$(find "${v180Dir}" -maxdepth 6 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | head -1)
+      [ -z "\$PANEL_JSON" ] && { echo "PANEL_NOT_FOUND"; exit 1; }
+      cd "\$(dirname "\$PANEL_JSON")"
+      echo "PANEL_DIR=\$(pwd)"
+
       mkdir -p .data
       [ -d "${backupDir}/data" ] && cp -r "${backupDir}/data/"* .data/ 2>/dev/null || true
       [ -f "${backupDir}/users.json" ] && cp "${backupDir}/users.json" .data/users.json 2>/dev/null || true
-      [ -f "${backupDir}/database.sqlite" ] && cp "${backupDir}/database.sqlite" .data/database.sqlite 2>/dev/null || true
       [ -f "${backupDir}/.env" ] && cp "${backupDir}/.env" .env
       [ -f .env ] || echo "PORT=6767" > .env
       grep -q "^PORT=" .env || echo "PORT=6767" >> .env
       grep -q "^JWT_SECRET=" .env || echo "JWT_SECRET=\$(head -c 32 /dev/urandom | base64)" >> .env
+
       echo "legacy-peer-deps=true" > .npmrc
       rm -rf node_modules package-lock.json
       npm cache clean --force >/dev/null 2>&1 || true
-      npm install --legacy-peer-deps --no-audit --no-fund >/dev/null 2>&1
-      NODE_OPTIONS="--max-old-space-size=2048" npm run build >/dev/null 2>&1
+      npm install --legacy-peer-deps --no-audit --no-fund
+      NODE_OPTIONS="--max-old-space-size=2048" npm run build
       [ -f dist/server.cjs ] || { echo "BUILD_FAILED"; exit 1; }
+      echo "FINAL_DIR=\$(pwd)"
       echo "INSTALL_OK"
     `;
 
-    exec(installCmd, { timeout: 900000, maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
+    exec(installCmd, { timeout: 900000, maxBuffer: 50 * 1024 * 1024, env: { ...process.env, HOME: os.homedir() } }, async (err, stdout, stderr) => {
       if (err || !stdout.includes("INSTALL_OK")) {
-        return res.status(500).json({ error: "Installation failed", details: (stderr || err?.message || "").slice(-500) });
+        migrationState.running = false;
+        migrationState.step = "error";
+        migrationState.message = "Installation failed";
+        migrationState.error = (stderr || err?.message || stdout || "").slice(-1000);
+        return;
       }
 
-      res.json({ success: true, message: "Migration complete", v180Dir: v180PanelDir });
+      const match = stdout.match(/FINAL_DIR=(.+)/);
+      const actualPanelDir = match ? match[1].trim() : path.join(v180Dir, "panel", "panel", "astrowax-panel");
 
-      setTimeout(() => {
-        const swapCmd = `
-          pkill -f "node .*AstroWax-Panel" 2>/dev/null || true
-          sleep 2
-          cd "${v180PanelDir}"
-          export NVM_DIR="\${HOME}/.nvm"
-          [ -s "/usr/local/share/nvm/nvm.sh" ] && export NVM_DIR=/usr/local/share/nvm
-          [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
-          nvm use 20 >/dev/null 2>&1 || true
-          command -v pm2 >/dev/null 2>&1 || npm install -g pm2 >/dev/null 2>&1 || true
-          cat > ecosystem.config.cjs << 'EOFPM2'
+      migrationState.v180Dir = actualPanelDir;
+      migrationState.step = "start";
+      migrationState.message = "Starting v1.80 panel...";
+      migrationState.progress = 85;
+
+      const swapCmd = `
+        pkill -f "node .*AstroWax-Panel" 2>/dev/null || true
+        sleep 2
+        cd "${actualPanelDir}"
+        export NVM_DIR="\${HOME}/.nvm"
+        [ -s "/usr/local/share/nvm/nvm.sh" ] && export NVM_DIR=/usr/local/share/nvm
+        . "\$NVM_DIR/nvm.sh"
+        nvm use 20 >/dev/null 2>&1 || true
+        command -v pm2 >/dev/null 2>&1 || npm install -g pm2 >/dev/null 2>&1 || true
+        cat > ecosystem.config.cjs << 'EOFPM2'
 module.exports = { apps: [{ name: "astrowax-main", script: "npm", args: "start", instances: 1, autorestart: true, env: { NODE_ENV: "production", PORT: 6767 } }] };
 EOFPM2
-          pm2 delete astrowax-main 2>/dev/null || true
-          pm2 delete AstroWax-Panel 2>/dev/null || true
-          pm2 start ecosystem.config.cjs
-          pm2 save --force 2>/dev/null || true
-        `;
-        exec(swapCmd, { timeout: 180000 }, () => {});
+        pm2 delete astrowax-main 2>/dev/null || true
+        pm2 delete AstroWax-Panel 2>/dev/null || true
+        pm2 start ecosystem.config.cjs
+        pm2 save --force 2>/dev/null || true
+        for i in \$(seq 1 30); do
+          curl -s -f "http://127.0.0.1:6767/" >/dev/null 2>&1 && { echo "PORT_UP"; break; }
+          sleep 2
+        done
+      `;
+
+      exec(swapCmd, { timeout: 180000, env: { ...process.env, HOME: os.homedir() } }, async (err2) => {
+        if (err2) {
+          migrationState.running = false;
+          migrationState.step = "error";
+          migrationState.message = "Failed to start v1.80";
+          migrationState.error = err2.message;
+          return;
+        }
+
+        migrationState.running = false;
+        migrationState.step = "done";
+        migrationState.message = "Migration complete! Redirecting to v1.80...";
+        migrationState.progress = 100;
+        migrationState.finishedAt = Date.now();
 
         setTimeout(async () => {
           try { await fs.remove(path.join(HOME, "AstroWax-Panel")); } catch (e) {}
-        }, 8000);
-      }, 1000);
+        }, 10000);
+      });
     });
   } catch (err) {
-    res.status(500).json({ error: "Migration failed", details: err.message });
+    migrationState.running = false;
+    migrationState.step = "error";
+    migrationState.message = "Migration failed";
+    migrationState.error = err.message;
   }
+});
+
+router.get("/api/admin/migrate-to-v180/status", requireAdmin, (req, res) => {
+  res.json(migrationState);
+});
+
+router.post("/api/admin/migrate-to-v180/reset", requireAdmin, (req, res) => {
+  resetState();
+  res.json({ success: true, state: migrationState });
 });
 
 module.exports = router;
 MIGRATE_EOF
 
-        log_ok "Migration route created at: $ADMIN_DIR/migrate.js"
+        log_ok "Migration route created"
+
+        # Update overview.ejs
+        log_step "Updating overview.ejs with new upgrade UI..."
+        local OVERVIEW_FILE="$ACTUAL_PANEL_DIR/views/admin/overview.ejs"
+        if [ -f "$OVERVIEW_FILE" ]; then
+            cp "$OVERVIEW_FILE" "$OVERVIEW_FILE.backup" 2>/dev/null || true
+            log_ok "Backed up overview.ejs"
+        fi
     else
         log_err "Panel v1.0 install failed"
         return 1
@@ -718,7 +806,7 @@ MIGRATE_EOF
     echo -e "  ${C_GRAY}Start it with menu option: ${C_WHITE}Start Panel v1.0${C_RESET}"
 }
 
-# ✅ V1.0 NODE DAEMON INSTALL (with tailwindcss fix)
+# ✅ V1.0 NODE DAEMON INSTALL
 install_v10_node() {
     echo ""
     log_step "Installing AstroWax Node Daemon..."
@@ -758,7 +846,6 @@ cd "$DAEMON_DIR"
 rm -rf node_modules package-lock.json
 npm cache clean --force
 echo "legacy-peer-deps=true" > .npmrc
-
 npm install tailwindcss @tailwindcss/forms --legacy-peer-deps || true
 npm install --legacy-peer-deps
 '
@@ -795,7 +882,6 @@ npm install --legacy-peer-deps
 
     echo ""
     echo -e "  ${C_GRAY}Start: ${C_WHITE}cd $ACTUAL_NODE_DIR && node .${C_RESET}"
-    echo -e "  ${C_GRAY}Or menu option: ${C_WHITE}Start Node Daemon v1.0${C_RESET}"
     echo ""
 }
 
@@ -944,7 +1030,7 @@ update_panel() {
     curl -fsSL "$archive_url" -o "/tmp/awp_update.zip" || { log_err "Download failed"; return 1; }
     local temp_dir="/tmp/awp_update_$$"; mkdir -p "$temp_dir/new"
     unzip -q -o "/tmp/awp_update.zip" -d "$temp_dir/new"
-    local found=$(find "$temp_dir/new" -maxdepth 5 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | while read f; do grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" "$f" 2>/dev/null && echo "$f" && break; done | head -1)
+    local found=$(find "$temp_dir/new" -maxdepth 6 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | while read f; do grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${EXPECTED_PKG_NAME}\"" "$f" 2>/dev/null && echo "$f" && break; done | head -1)
     [ -z "$found" ] && { log_err "Update invalid"; rm -rf "$temp_dir" "/tmp/awp_update.zip"; return 1; }
     local new_root=$(dirname "$found")
     run_pm2 stop "$MAIN_PROCESS" 2>/dev/null || true
@@ -1004,7 +1090,7 @@ uninstall_panel() {
         rm -rf "$HOME/astrowax-v180" 2>/dev/null || true
         rm -rf "$HOME"/astrowax-v1-backup-* 2>/dev/null || true
 
-        rm -rf /root/panel /root/AstroWax-Panel /root/WaxDaemon 2>/dev/null || true
+        rm -rf /root/panel /root/AstroWax-Panel /root/WaxDaemon /root/astrowax-v180 2>/dev/null || true
         rm -rf /opt/panel /opt/AstroWax-Panel 2>/dev/null || true
         rm -rf /var/www/panel /var/www/AstroWax-Panel 2>/dev/null || true
 
