@@ -30,12 +30,15 @@ log_err()     { echo -e "  ${C_RED}x${C_RESET} ${C_RED}$1${C_RESET}"; }
 log_step()    { echo -e "  ${C_BLUE}>${C_RESET} ${C_BOLD}$1${C_RESET}"; }
 
 # ───────────────────────────────────────────────────────────────────
-#  nvm loader
+#  nvm loader — ensures node 20 available in every subshell
 # ───────────────────────────────────────────────────────────────────
 load_nvm_path() {
     export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
     [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" >/dev/null 2>&1
     [ -s "/usr/local/share/nvm/nvm.sh" ] && { export NVM_DIR=/usr/local/share/nvm; . "$NVM_DIR/nvm.sh" >/dev/null 2>&1; }
+    if command -v nvm >/dev/null 2>&1; then
+        nvm use 20 >/dev/null 2>&1 || true
+    fi
     for p in "$HOME/.nvm/versions/node/v20"*"/bin" "$HOME/.nvm/versions/node/v22"*"/bin" "/usr/local/share/nvm/versions/node/v20"*"/bin"; do
         [ -d "$p" ] && case ":$PATH:" in *":$p:"*) ;; *) export PATH="$p:$PATH" ;; esac
     done
@@ -322,7 +325,7 @@ build_application() {
 }
 
 # ───────────────────────────────────────────────────────────────────
-#  Panel Control (v1.80)
+#  Panel Control v1.80
 # ───────────────────────────────────────────────────────────────────
 start_panel_node() {
     local TARGET=$1
@@ -528,7 +531,7 @@ install_panel_v10() {
     esac
 }
 
-# ✅ V1.0 PANEL INSTALL — now includes fs-extra
+# ✅ V1.0 PANEL INSTALL
 install_v10_panel() {
     echo ""
     log_step "Installing AstroWax Panel v1.0..."
@@ -539,7 +542,6 @@ export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -y
 sudo apt-get install -y curl git unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config libsqlite3-dev sqlite3
 
-# nvm + Node 20
 (command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash)
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm
@@ -547,13 +549,11 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 nvm install 20
 nvm use 20
 
-# Clone
 rm -rf ~/AstroWax-Panel
 git clone https://github.com/AstroVoidHostDev/AstroWax-Panel ~/AstroWax-Panel
 cd ~/AstroWax-Panel
 unzip -oq panel.zip
 
-# Auto-detect panel dir
 PANEL_DIR=""
 if [ -f "panel/panel/package.json" ]; then PANEL_DIR="panel/panel"
 elif [ -f "panel/package.json" ]; then PANEL_DIR="panel"
@@ -570,11 +570,8 @@ rm -rf node_modules package-lock.json
 npm cache clean --force
 echo "legacy-peer-deps=true" > .npmrc
 npm install --legacy-peer-deps
-
-# ✅ NEW: Install fs-extra + sqlite3 for migration route
 npm install fs-extra connect-sqlite3 sqlite3 --legacy-peer-deps
 
-# Setup DB
 npm run seed
 npm run createUser
 '
@@ -592,7 +589,7 @@ npm run createUser
     echo -e "  ${C_GRAY}Start it with menu option: ${C_WHITE}Start Panel v1.0${C_RESET}"
 }
 
-# ✅ V1.0 NODE DAEMON INSTALL — now with auto-configure prompt
+# ✅ V1.0 NODE DAEMON INSTALL (with tailwindcss fix)
 install_v10_node() {
     echo ""
     log_step "Installing AstroWax Node Daemon..."
@@ -603,7 +600,6 @@ export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -y
 sudo apt-get install -y curl git zip unzip build-essential python3 python3-pip python3-setuptools python-is-python3 make gcc g++ pkg-config
 
-# nvm + Node 20
 (command -v nvm >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash)
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm
@@ -611,13 +607,11 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 nvm install 20
 nvm use 20
 
-# Clone
 rm -rf ~/WaxDaemon
 git clone https://github.com/AstroVoidHostDev/WaxDaemon ~/WaxDaemon
 cd ~/WaxDaemon
 unzip -oq waxdaemon.zip
 
-# Auto-detect
 DAEMON_DIR=""
 if [ -f "daemon/daemon/package.json" ]; then DAEMON_DIR="daemon/daemon"
 elif [ -f "daemon/package.json" ]; then DAEMON_DIR="daemon"
@@ -635,30 +629,33 @@ cd "$DAEMON_DIR"
 rm -rf node_modules package-lock.json
 npm cache clean --force
 echo "legacy-peer-deps=true" > .npmrc
+
+# ✅ Install tailwindcss FIRST (fixes "Cannot find module tailwindcss/plugin")
+npm install tailwindcss @tailwindcss/forms --legacy-peer-deps || true
+
+# Then full install
 npm install --legacy-peer-deps
 '
 
     if [ -d "$HOME/WaxDaemon/daemon/daemon" ] && [ -f "$HOME/WaxDaemon/daemon/daemon/package.json" ]; then
         ACTUAL_NODE_DIR="$HOME/WaxDaemon/daemon/daemon"
-        log_ok "Node Daemon installed at: $ACTUAL_NODE_DIR"
     elif [ -d "$HOME/WaxDaemon/daemon" ] && [ -f "$HOME/WaxDaemon/daemon/package.json" ]; then
         ACTUAL_NODE_DIR="$HOME/WaxDaemon/daemon"
-        log_ok "Node Daemon installed at: $ACTUAL_NODE_DIR"
     else
         log_err "Node Daemon install failed"
         return 1
     fi
+    log_ok "Node Daemon installed at: $ACTUAL_NODE_DIR"
 
     echo ""
     echo -e "  ${C_YELLOW}${C_BOLD}Next: Configure the daemon with your panel${C_RESET}"
     echo -e "  ${C_GRAY}──────────────────────────────────────────────────────${C_RESET}"
     echo -e "  ${C_WHITE}1.${C_RESET} Go to your V1.0 Panel admin settings"
     echo -e "  ${C_WHITE}2.${C_RESET} Copy the ${C_CYAN}API Key${C_RESET} and ${C_CYAN}Panel URL${C_RESET}"
-    echo -e "  ${C_WHITE}3.${C_RESET} Run the configure command (see below)"
+    echo -e "  ${C_WHITE}3.${C_RESET} Run the configure command"
     echo -e "  ${C_GRAY}──────────────────────────────────────────────────────${C_RESET}"
     echo ""
 
-    # Interactive configure prompt
     if [ -t 0 ]; then
         echo -ne "  ${C_CYAN}Configure daemon now? (y/N): ${C_RESET}"; read -r CONFIG_NOW
         if [[ "$CONFIG_NOW" =~ ^[Yy]$ ]]; then
@@ -688,16 +685,13 @@ npm install --legacy-peer-deps
                     echo -e "  ${C_WHITE}cd $ACTUAL_NODE_DIR${C_RESET}"
                     echo -e "  ${C_WHITE}npm run configure -- --panel $PANEL_URL --key $API_KEY${C_RESET}"
                 fi
-            else
-                log_warn "No API key provided — skipping configure"
             fi
         fi
     fi
 
     echo ""
-    echo -e "  ${C_GRAY}To start the daemon later:${C_RESET}"
-    echo -e "  ${C_WHITE}cd $ACTUAL_NODE_DIR && node .${C_RESET}"
-    echo -e "  ${C_GRAY}Or use menu option: ${C_WHITE}Start Node Daemon v1.0${C_RESET}"
+    echo -e "  ${C_GRAY}To start later: ${C_WHITE}cd $ACTUAL_NODE_DIR && node .${C_RESET}"
+    echo -e "  ${C_GRAY}Or menu option: ${C_WHITE}Start Node Daemon v1.0${C_RESET}"
     echo ""
 }
 
@@ -718,7 +712,7 @@ start_v10_panel() {
 
     log_info "Directory: $TARGET_DIR"
     echo ""
-    log_step "Running pre-flight (apt install npm + npm install)..."
+    log_step "Running pre-flight..."
     echo ""
 
     bash -c "cd '$TARGET_DIR'
@@ -737,7 +731,7 @@ start_v10_panel() {
     "
 }
 
-# ✅ START V1.0 NODE DAEMON — pre-flight + auto-configure check
+# ✅ START V1.0 NODE DAEMON (with tailwindcss fix)
 start_v10_node() {
     print_banner
     print_header "Start Node Daemon v1.0" "Legacy mode"
@@ -755,7 +749,7 @@ start_v10_node() {
     log_info "Directory: $TARGET_DIR"
     echo ""
 
-    # Check if configured
+    # Configuration check
     if [ ! -f "$TARGET_DIR/config.json" ] && [ ! -f "$TARGET_DIR/.env" ] && [ ! -f "$TARGET_DIR/config.yml" ]; then
         log_warn "Daemon may not be configured yet"
         if [ -t 0 ]; then
@@ -779,7 +773,7 @@ start_v10_node() {
         echo ""
     fi
 
-    log_step "Running pre-flight (apt install npm + npm install)..."
+    log_step "Running pre-flight..."
     echo ""
 
     bash -c "cd '$TARGET_DIR'
@@ -789,6 +783,7 @@ start_v10_node() {
         [ -s /usr/local/share/nvm/nvm.sh ] && export NVM_DIR=/usr/local/share/nvm
         [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"
         nvm use 20 >/dev/null 2>&1 || true
+        npm install tailwindcss @tailwindcss/forms --legacy-peer-deps 2>/dev/null || true
         npm install --legacy-peer-deps
         echo ''
         echo '========================================='
@@ -798,7 +793,7 @@ start_v10_node() {
     "
 }
 
-# ✅ NEW: Manual configure helper
+# ✅ CONFIGURE NODE DAEMON
 configure_v10_node() {
     print_banner
     print_header "Configure Node Daemon" "v1.0 Legacy mode"
@@ -916,6 +911,8 @@ uninstall_panel() {
         rm -rf "$HOME/$WORK_DIR_NAME" 2>/dev/null || true
         rm -rf "$HOME/AstroWax-Panel" 2>/dev/null || true
         rm -rf "$HOME/WaxDaemon" 2>/dev/null || true
+        rm -rf "$HOME/astrowax-v180" 2>/dev/null || true
+        rm -rf "$HOME"/astrowax-v1-backup-* 2>/dev/null || true
 
         rm -rf /root/panel /root/AstroWax-Panel /root/WaxDaemon 2>/dev/null || true
         rm -rf /opt/panel /opt/AstroWax-Panel 2>/dev/null || true
